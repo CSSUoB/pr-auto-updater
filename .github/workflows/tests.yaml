@@ -6,11 +6,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Node.js 18.x
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - name: Set up Node.js 23.x
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.x
+          node-version: 23.x
       - name: Install dependencies
         run: yarn install --dev
       - name: Lint files
@@ -20,4 +20,4 @@ jobs:
         env:
           CI: true
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
