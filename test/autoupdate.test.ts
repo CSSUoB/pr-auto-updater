@@ -16,6 +16,7 @@ import {
   WorkflowDispatchEvent,
   WorkflowRunEvent,
 } from '@octokit/webhooks-types/schema';
+import * as core from '@actions/core';
 
 type PullRequestResponse =
   Endpoints['GET /repos/{owner}/{repo}/pulls/{pull_number}']['response'];
@@ -1355,7 +1356,7 @@ describe('test `merge`', () => {
       .reply(200, {});
 
     const setOutput = jest.fn();
-    const infoSpy = jest.spyOn(require('@actions/core'), 'info');
+    const infoSpy = jest.spyOn(core, 'info');
 
     await updater.merge(owner, prNumber, mergeOpts, setOutput);
 
@@ -1395,7 +1396,7 @@ describe('test `merge`', () => {
       .reply(200, {});
 
     const setOutput = jest.fn();
-    const infoSpy = jest.spyOn(require('@actions/core'), 'info');
+    const infoSpy = jest.spyOn(core, 'info');
 
     await updater.merge(owner, prNumber, mergeOpts, setOutput);
 
