@@ -35,7 +35,6 @@ const head = 'develop';
 const branch = 'not-a-real-branch';
 
 // Replace problematic createMock usage with a manual mock for PushEvent
-declare const global: any;
 const dummyPushEvent: PushEvent = {
   ref: `refs/heads/${branch}`,
   repository: {
