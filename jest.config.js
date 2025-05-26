@@ -6,9 +6,12 @@ module.exports = {
   collectCoverage: true,
   coverageDirectory: 'coverage',
   coverageProvider: 'v8',
-  globals: {
-    'ts-jest': {
-      tsconfig: '<rootDir>/tsconfig.tests.json',
-    },
+  transform: {
+    '^.+\\.(ts|tsx)$': [
+      'ts-jest',
+      {
+        tsconfig: '<rootDir>/tsconfig.tests.json',
+      },
+    ],
   },
 };
