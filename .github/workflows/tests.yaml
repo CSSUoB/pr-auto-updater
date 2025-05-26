@@ -21,3 +21,5 @@ jobs:
           CI: true
       - name: Upload coverage
         uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
