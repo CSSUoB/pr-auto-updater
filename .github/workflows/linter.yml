@@ -1,9 +1,9 @@
-name: Tests
+name: Linter
 
 on: push
 
 jobs:
-  tests:
+  linter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,12 +15,5 @@ jobs:
       - name: Install dependencies
         run: yarn install --dev
 
-      - name: Run tests
-        run: yarn run test
-        env:
-          CI: true
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Lint files
+        run: yarn run lint
