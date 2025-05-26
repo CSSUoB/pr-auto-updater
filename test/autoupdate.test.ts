@@ -1323,4 +1323,29 @@ describe('test `merge`', () => {
       expect(scope.isDone()).toBe(true);
     }
   });
+
+  test('label merge conflicts', async () => {
+    (config.retryCount as jest.Mock).mockReturnValue(0);
+    (config.mergeConflictAction as jest.Mock).mockReturnValue('label');
+    (config.mergeConflictLabel as jest.Mock).mockReturnValue('conflicted');
+    const updater = new AutoUpdater(config, emptyEvent);
+
+    const scope = nock('https://api.github.com:443')
+      .post(`/repos/${owner}/${repo}/merges`, {
+        commit_message: mergeOpts.commit_message,
+        base: mergeOpts.base,
+        head: mergeOpts.head,
+      })
+      .reply(409, {
+        message: 'Merge conflict',
+      });
+
+    const setOutput = jest.fn();
+    await updater.merge(owner, 1, mergeOpts, setOutput);
+
+    expect(scope.isDone()).toEqual(true);
+
+    expect(setOutput).toHaveBeenCalledTimes(1);
+    expect(setOutput).toHaveBeenCalledWith(Output.Conflicted, true);
+  });
 });

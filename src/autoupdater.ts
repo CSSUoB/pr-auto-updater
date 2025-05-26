@@ -490,6 +490,10 @@ export class AutoUpdater {
               // Ignore conflicts if configured to do so.
               ghCore.info('Merge conflict detected, skipping update.');
               return false;
+            } else if (mergeConflictAction === 'label') {
+              ghCore.info('Merge conflict detected, labelling with label: ' + mergeConflictLabel);
+              
+              return false;
             } else {
               // Else, throw an error so we don't continue retrying.
               ghCore.error('Merge conflict error trying to update branch');
