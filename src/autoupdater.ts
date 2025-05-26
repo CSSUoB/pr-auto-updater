@@ -450,6 +450,7 @@ export class AutoUpdater {
     const retryCount = this.config.retryCount();
     const retrySleep = this.config.retrySleep();
     const mergeConflictAction = this.config.mergeConflictAction();
+    const mergeConflictLabel = this.config.mergeConflictLabel();
 
     let retries = 0;
 
