@@ -1,51 +1,53 @@
-import { defineConfig } from "eslint/config";
-import jest from "eslint-plugin-jest";
-import typescriptEslint from "@typescript-eslint/eslint-plugin";
-import globals from "globals";
-import tsParser from "@typescript-eslint/parser";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import js from "@eslint/js";
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig } from 'eslint/config';
+import jest from 'eslint-plugin-jest';
+import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import globals from 'globals';
+import tsParser from '@typescript-eslint/parser';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import js from '@eslint/js';
+import { FlatCompat } from '@eslint/eslintrc';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({
-    baseDirectory: __dirname,
-    recommendedConfig: js.configs.recommended,
-    allConfig: js.configs.all
+  baseDirectory: __dirname,
+  recommendedConfig: js.configs.recommended,
+  allConfig: js.configs.all,
 });
 
-export default defineConfig([{
+export default defineConfig([
+  {
     extends: compat.extends(
-        "plugin:prettier/recommended",
-        "plugin:@typescript-eslint/eslint-recommended",
-        "plugin:@typescript-eslint/recommended",
+      'plugin:prettier/recommended',
+      'plugin:@typescript-eslint/eslint-recommended',
+      'plugin:@typescript-eslint/recommended',
     ),
 
     plugins: {
-        jest,
-        "@typescript-eslint": typescriptEslint,
+      jest,
+      '@typescript-eslint': typescriptEslint,
     },
 
     languageOptions: {
-        globals: {
-            ...globals.node,
-            ...jest.environments.globals.globals,
-        },
+      globals: {
+        ...globals.node,
+        ...jest.environments.globals.globals,
+      },
 
-        parser: tsParser,
-        ecmaVersion: 2020,
-        sourceType: "module",
+      parser: tsParser,
+      ecmaVersion: 2020,
+      sourceType: 'module',
     },
 
     rules: {
-        "no-console": "error",
-        "no-plusplus": "off",
-        "no-await-in-loop": "off",
-        "no-constant-condition": "off",
-        "no-restricted-syntax": "off",
-        "@typescript-eslint/ban-ts-comment": "off",
-        "@typescript-eslint/no-explicit-any": "off",
+      'no-console': 'error',
+      'no-plusplus': 'off',
+      'no-await-in-loop': 'off',
+      'no-constant-condition': 'off',
+      'no-restricted-syntax': 'off',
+      '@typescript-eslint/ban-ts-comment': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
     },
-}]);
+  },
+]);

@@ -4,7 +4,6 @@ if ('GITHUB_TOKEN' in process.env) {
   delete process.env.GITHUB_TOKEN;
 }
 
-import { createMock } from 'ts-auto-mock';
 import nock from 'nock';
 import config from '../src/config-loader';
 import { AutoUpdater } from '../src/autoupdater';
@@ -35,7 +34,9 @@ const base = 'master';
 const head = 'develop';
 const branch = 'not-a-real-branch';
 
-const dummyPushEvent = createMock<PushEvent>({
+// Replace problematic createMock usage with a manual mock for PushEvent
+declare const global: any;
+const dummyPushEvent: PushEvent = {
   ref: `refs/heads/${branch}`,
   repository: {
     owner: {
@@ -43,8 +44,9 @@ const dummyPushEvent = createMock<PushEvent>({
     },
     name: repo,
   },
-});
-const dummyWorkflowDispatchEvent = createMock<WorkflowDispatchEvent>({
+  // Add any other required PushEvent properties as needed for your tests
+} as any;
+const dummyWorkflowDispatchEvent: WorkflowDispatchEvent = {
   ref: `refs/heads/${branch}`,
   repository: {
     owner: {
@@ -52,8 +54,8 @@ const dummyWorkflowDispatchEvent = createMock<WorkflowDispatchEvent>({
     },
     name: repo,
   },
-});
-const dummyWorkflowRunPushEvent = createMock<WorkflowRunEvent>({
+} as any;
+const dummyWorkflowRunPushEvent: WorkflowRunEvent = {
   workflow_run: {
     event: 'push',
     head_branch: branch,
@@ -64,8 +66,8 @@ const dummyWorkflowRunPushEvent = createMock<WorkflowRunEvent>({
     },
     name: repo,
   },
-});
-const dummyWorkflowRunPullRequestEvent = createMock<WorkflowRunEvent>({
+} as any;
+const dummyWorkflowRunPullRequestEvent: WorkflowRunEvent = {
   workflow_run: {
     event: 'pull_request',
     head_branch: branch,
@@ -76,7 +78,7 @@ const dummyWorkflowRunPullRequestEvent = createMock<WorkflowRunEvent>({
     },
     name: repo,
   },
-});
+} as any;
 const dummyScheduleEvent = {
   schedule: '*/5 * * * *',
 };
@@ -109,30 +111,29 @@ const validPull = {
   merged: false,
   state: 'open',
   labels: [
-    {
-      id: 1,
-      name: 'one',
-    },
-    {
-      id: 2,
-      name: 'two',
-    },
+    { id: 1, name: 'one' },
+    { id: 2, name: 'two' },
   ],
   base: {
     ref: base,
     label: base,
+    sha: 'base-sha',
+    repo: {
+      name: repo,
+      owner: { login: owner },
+    },
   },
   head: {
     label: head,
     ref: head,
+    sha: 'head-sha',
     repo: {
       name: repo,
-      owner: {
-        login: owner,
-      },
+      owner: { login: owner },
     },
   },
   draft: false,
+  auto_merge: null,
 };
 const clonePull = () => JSON.parse(JSON.stringify(validPull));
 
@@ -629,7 +630,7 @@ describe('test `handlePush`', () => {
   test('push event on a branch with PRs', async () => {
     const updater = new AutoUpdater(config, dummyPushEvent);
 
-    const pullsMock = [];
+    const pullsMock: any[] = [];
     const expectedPulls = 5;
     for (let i = 0; i < expectedPulls; i++) {
       pullsMock.push({
@@ -654,7 +655,7 @@ describe('test `handlePush`', () => {
   });
 
   test('push event with invalid owner', async () => {
-    const invalidPushEvent = createMock<PushEvent>({
+    const invalidPushEvent = {
       ref: `refs/heads/${branch}`,
       repository: {
         owner: {
@@ -662,7 +663,7 @@ describe('test `handlePush`', () => {
         },
         name: repo,
       },
-    });
+    } as any;
     const updater = new AutoUpdater(config, invalidPushEvent);
     const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
 
@@ -673,7 +674,7 @@ describe('test `handlePush`', () => {
   });
 
   test('push event with invalid repo name', async () => {
-    const invalidPushEvent = createMock<PushEvent>({
+    const invalidPushEvent = {
       ref: `refs/heads/${branch}`,
       repository: {
         owner: {
@@ -681,7 +682,7 @@ describe('test `handlePush`', () => {
         },
         name: '',
       },
-    });
+    } as any;
     const updater = new AutoUpdater(config, invalidPushEvent);
     const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
 
@@ -705,7 +706,7 @@ describe('test `handleSchedule`', () => {
     const event = dummyScheduleEvent;
     const updater = new AutoUpdater(config, event as unknown as WebhookEvent);
 
-    const pullsMock = [];
+    const pullsMock: any[] = [];
     const expectedPulls = 5;
     for (let i = 0; i < expectedPulls; i++) {
       pullsMock.push({
@@ -771,7 +772,7 @@ describe('test `handleWorkflowDispatch`', () => {
   test('workflow dispatch event', async () => {
     const updater = new AutoUpdater(config, dummyWorkflowDispatchEvent);
 
-    const pullsMock = [];
+    const pullsMock: any[] = [];
     const expectedPulls = 5;
     for (let i = 0; i < expectedPulls; i++) {
       pullsMock.push({
@@ -835,7 +836,7 @@ describe('test `handleWorkflowRun`', () => {
   test('workflow_run event by push event on a branch with PRs', async () => {
     const updater = new AutoUpdater(config, dummyWorkflowRunPushEvent);
 
-    const pullsMock = [];
+    const pullsMock: any[] = [];
     const expectedPulls = 5;
     for (let i = 0; i < expectedPulls; i++) {
       pullsMock.push({
@@ -862,10 +863,10 @@ describe('test `handleWorkflowRun`', () => {
   test('workflow_run event by pull_request event with an update triggered', async () => {
     const updater = new AutoUpdater(
       config,
-      createMock<WorkflowRunEvent>(dummyWorkflowRunPullRequestEvent),
+      dummyWorkflowRunPullRequestEvent as WorkflowRunEvent,
     );
 
-    const pullsMock = [];
+    const pullsMock: any[] = [];
     const expectedPulls = 2;
     for (let i = 0; i < expectedPulls; i++) {
       pullsMock.push({
@@ -892,7 +893,7 @@ describe('test `handleWorkflowRun`', () => {
   test('workflow_run event by pull_request event without an update', async () => {
     const updater = new AutoUpdater(
       config,
-      createMock<WorkflowRunEvent>(dummyWorkflowRunPullRequestEvent),
+      dummyWorkflowRunPullRequestEvent as WorkflowRunEvent,
     );
 
     const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(false);
@@ -927,21 +928,19 @@ describe('test `handleWorkflowRun`', () => {
 
 describe('test `handlePullRequest`', () => {
   test('pull request event with an update triggered', async () => {
-    const updater = new AutoUpdater(config, createMock<PullRequestEvent>());
-
+    const event = { pull_request: clonePull() } as PullRequestEvent;
+    const updater = new AutoUpdater(config, event);
     const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
     const updated = await updater.handlePullRequest();
-
     expect(updated).toEqual(true);
     expect(updateSpy).toHaveBeenCalledTimes(1);
   });
 
   test('pull request event without an update', async () => {
-    const updater = new AutoUpdater(config, createMock<PullRequestEvent>());
-
+    const event = { pull_request: clonePull() } as PullRequestEvent;
+    const updater = new AutoUpdater(config, event);
     const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(false);
     const updated = await updater.handlePullRequest();
-
     expect(updated).toEqual(false);
     expect(updateSpy).toHaveBeenCalledTimes(1);
   });
@@ -1119,7 +1118,7 @@ describe('test `merge`', () => {
     (config.mergeConflictAction as jest.Mock).mockReturnValue(null);
     const updater = new AutoUpdater(config, emptyEvent);
 
-    const scopes = [];
+    const scopes: nock.Scope[] = [];
     for (let i = 0; i <= retryCount; i++) {
       const scope = nock('https://api.github.com:443')
         .post(`/repos/${owner}/${repo}/merges`, {
@@ -1257,7 +1256,7 @@ describe('test `merge`', () => {
     (config.mergeMsg as jest.Mock).mockReturnValue(null);
     const updater = new AutoUpdater(config, dummyPushEvent);
 
-    const pullsMock = [];
+    const pullsMock: any[] = [];
     const expectedPulls = 5;
     for (let i = 0; i < expectedPulls; i++) {
       pullsMock.push({
@@ -1290,7 +1289,7 @@ describe('test `merge`', () => {
       )
       .reply(200, pullsMock);
 
-    const mergeScopes = [];
+    const mergeScopes: any[] = [];
     for (let i = 0; i < expectedPulls; i++) {
       let httpStatus = 200;
       let response: Record<string, unknown> = {

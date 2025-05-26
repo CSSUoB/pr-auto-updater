@@ -6,7 +6,10 @@
     "moduleResolution": "node",
     "strict": true,
     "esModuleInterop": true,
-    "rootDir": "."
+    "rootDir": ".",
+    "plugins": [
+      { "name": "ts-auto-mock" }
+    ]
   },
   "include": ["src/**/*", "bin/**/*"],
   "exclude": ["**/*.test.ts"]

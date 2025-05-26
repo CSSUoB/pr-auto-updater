@@ -1,11 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "types": ["jest", "ts-auto-mock"],
     "plugins": [
-      {
-        "transform": "ts-auto-mock/transformer",
-        "cacheBetweenTests": false
-      },
+      { "name": "ts-auto-mock" }
     ]
   },
   "exclude": ["node_modules"]

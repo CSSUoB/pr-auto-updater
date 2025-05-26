@@ -54,6 +54,11 @@ export class AutoUpdater {
 
     ghCore.info(`Handling pull_request event triggered by action '${action}'`);
 
+    if (!pull_request.head.repo) {
+      ghCore.error('Pull request head repo is null, skipping update.');
+      return false;
+    }
+
     const isUpdated = await this.update(
       pull_request.head.repo.owner.login,
       pull_request,

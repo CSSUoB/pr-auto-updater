@@ -39,12 +39,12 @@ export class ConfigLoader {
 
   mergeMsg(): string {
     const msg = this.getValue('MERGE_MSG', false, '').toString().trim();
-    return msg === '' ? null : msg;
+    return msg;
   }
 
   conflictMsg(): string {
     const msg = this.getValue('CONFLICT_MSG', false, '').toString().trim();
-    return msg === '' ? null : msg;
+    return msg;
   }
 
   retryCount(): number {
@@ -73,7 +73,6 @@ export class ConfigLoader {
     return this.getValue('PR_READY_STATE', false, 'all');
   }
 
-  // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
   getValue(key: string, required = false, defaultVal?: any): any {
     if (
       key in this.env &&

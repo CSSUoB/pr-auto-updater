@@ -5,7 +5,7 @@ const tests = [
     name: 'githubToken',
     envVar: 'GITHUB_TOKEN',
     required: true,
-    default: null,
+    default: '',
     type: 'string',
   },
   {
@@ -40,14 +40,14 @@ const tests = [
     name: 'mergeMsg',
     envVar: 'MERGE_MSG',
     required: false,
-    default: null,
+    default: '',
     type: 'string',
   },
   {
     name: 'conflictMsg',
     envVar: 'CONFLICT_MSG',
     required: false,
-    default: null,
+    default: '',
     type: 'string',
   },
   {
