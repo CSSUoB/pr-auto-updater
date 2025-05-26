@@ -492,7 +492,25 @@ export class AutoUpdater {
               return false;
             } else if (mergeConflictAction === 'label') {
               ghCore.info('Merge conflict detected, labelling with label: ' + mergeConflictLabel);
-              
+              // Fetch current labels on the PR
+              const { data: prData } = await this.octokit.rest.pulls.get({
+                owner: mergeOpts.owner as string,
+                repo: mergeOpts.repo as string,
+                pull_number: prNumber,
+              });
+              const currentLabels = prData.labels.map((l: any) => l.name).filter(Boolean);
+              if (!currentLabels.includes(mergeConflictLabel)) {
+                const newLabels = [...currentLabels, mergeConflictLabel];
+                await this.octokit.rest.issues.update({
+                  owner: mergeOpts.owner as string,
+                  repo: mergeOpts.repo as string,
+                  issue_number: prNumber,
+                  labels: newLabels,
+                });
+                ghCore.info(`Added merge conflict label '${mergeConflictLabel}' to PR #${prNumber}.`);
+              } else {
+                ghCore.info(`Merge conflict label '${mergeConflictLabel}' already present on PR #${prNumber}.`);
+              }
               return false;
             } else {
               // Else, throw an error so we don't continue retrying.
