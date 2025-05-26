@@ -72,6 +72,13 @@ const tests = [
     type: 'string',
   },
   {
+    name: 'mergeConflictLabel',
+    envVar: 'MERGE_CONFLICT_LABEL',
+    required: false,
+    default: 'merge-conflict',
+    type: 'string',
+  },
+  {
     name: 'githubRef',
     envVar: 'GITHUB_REF',
     required: true,

@@ -61,6 +61,10 @@ export class ConfigLoader {
     return this.getValue('MERGE_CONFLICT_ACTION', false, 'fail');
   }
 
+  mergeConflictLabel(): string {
+    return this.getValue('MERGE_CONFLICT_LABEL', false, 'merge-conflict');
+  }
+
   githubRef(): string {
     return this.getValue('GITHUB_REF', true, '');
   }
