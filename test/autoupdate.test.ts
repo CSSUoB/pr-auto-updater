@@ -1363,7 +1363,7 @@ describe('test `merge`', () => {
     expect(getScope.isDone()).toBe(true);
     expect(updateScope.isDone()).toBe(false);
     expect(infoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("already present")
+      expect.stringContaining('already present'),
     );
   });
 
@@ -1375,9 +1375,7 @@ describe('test `merge`', () => {
 
     // Mock the PR labels to already include the merge conflict label
     const prNumber = 1;
-    const existingLabels = [
-      { id: 1, name: 'bug' },
-    ];
+    const existingLabels = [{ id: 1, name: 'bug' }];
 
     // nock for merge attempt (409 merge conflict)
     const mergeScope = nock('https://api.github.com:443')
@@ -1405,7 +1403,7 @@ describe('test `merge`', () => {
     expect(getScope.isDone()).toBe(true);
     expect(updateScope.isDone()).toBe(false);
     expect(infoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Added merge conflict label")
+      expect.stringContaining('Added merge conflict label'),
     );
   });
 });
