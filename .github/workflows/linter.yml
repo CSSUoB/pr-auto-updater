@@ -11,16 +11,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 23.x
-
       - name: Install dependencies
         run: yarn install --dev
-
-      - name: Run tests
-        run: yarn run test
-        env:
-          CI: true
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Lint files
+        run: yarn run lint
