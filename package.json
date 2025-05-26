@@ -1,10 +1,10 @@
 {
   "name": "autoupdate-action",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "A GitHub Action that auto-updates PRs with changes from their base branch.",
   "main": "src/autoupdater.ts",
-  "repository": "https://github.com/chinthakagodawita/autoupdate",
-  "author": "Chin Godawita <chin.godawita@me.com>",
+  "repository": "https://github.com/CSSUoB/pr-auto-updater",
+  "author": "MattyTheHacker <<18513864+MattyTheHacker@users.noreply.github.com>>",
   "license": "MIT",
   "bin": {
     "autoupdate-action": "bin/cli.js"
