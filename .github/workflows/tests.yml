@@ -16,7 +16,7 @@ jobs:
         run: yarn install --dev
 
       - name: Run tests
-        run: yarn run test
+        run: yarn run test -- --ci --reporters=default --reporters=jest-junit
         env:
           CI: true
 
@@ -24,3 +24,10 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./junit.xml
