@@ -1,9 +1,9 @@
-name: Tests
+name: Linter
 
 on: push
 
 jobs:
-  build:
+  linter:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -11,7 +11,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 23.x
+
       - name: Install dependencies
         run: yarn install --dev
+
       - name: Lint files
         run: yarn run lint
