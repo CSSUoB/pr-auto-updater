@@ -6,9 +6,7 @@
   "repository": "https://github.com/CSSUoB/pr-auto-updater",
   "author": "MattyTheHacker <<18513864+MattyTheHacker@users.noreply.github.com>>",
   "license": "MIT",
-  "bin": {
-    "autoupdate-action": "bin/cli.js"
-  },
+  "bin": "bin/cli.js",
   "scripts": {
     "build": "ncc build bin/cli.ts --out dist",
     "lint": "eslint . && prettier --list-different bin/*.ts src/*.ts test/*.ts",
@@ -45,7 +43,7 @@
     "ttypescript": "^1.5.15",
     "typescript": "^5.0.4"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "packageManager": "yarn@4.9.1",
   "resolutions": {
     "glob": "^9.0.0"
   }

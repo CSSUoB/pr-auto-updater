@@ -12,11 +12,14 @@ jobs:
         with:
           node-version: 23.x
 
+      - name: Enable corepack
+        run: corepack enable
+
       - name: Install dependencies
-        run: yarn install --dev
+        run: yarn install
 
       - name: Run tests
-        run: yarn run test -- --ci --reporters=default --reporters=jest-junit
+        run: yarn run test --ci --reporters=default --reporters=jest-junit
         env:
           CI: true
 
