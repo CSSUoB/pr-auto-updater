@@ -944,6 +944,25 @@ describe('test `handlePullRequest`', () => {
     expect(updated).toEqual(false);
     expect(updateSpy).toHaveBeenCalledTimes(1);
   });
+
+  test('pull request head repo is null, should log error and return false', async () => {
+    const dummyPullRequestEvent = {
+      action: 'synchronize',
+      pull_request: {
+        head: {
+          repo: null,
+        },
+      },
+    } as any;
+    const updater = new AutoUpdater(config, dummyPullRequestEvent);
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const result = await updater.handlePullRequest();
+    expect(result).toBe(false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Pull request head repo is null, skipping update.',
+    );
+    errorSpy.mockRestore();
+  });
 });
 
 describe('test `update`', () => {
