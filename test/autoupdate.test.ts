@@ -16,6 +16,7 @@ import {
   WorkflowDispatchEvent,
   WorkflowRunEvent,
 } from '@octokit/webhooks-types/schema';
+import * as core from '@actions/core';
 
 type PullRequestResponse =
   Endpoints['GET /repos/{owner}/{repo}/pulls/{pull_number}']['response'];
@@ -1322,5 +1323,88 @@ describe('test `merge`', () => {
     for (const scope of mergeScopes) {
       expect(scope.isDone()).toBe(true);
     }
+  });
+
+  test('merge conflict label is configured and merge conflict label is already present', async () => {
+    (config.retryCount as jest.Mock).mockReturnValue(0);
+    (config.mergeConflictAction as jest.Mock).mockReturnValue('label');
+    (config.mergeConflictLabel as jest.Mock).mockReturnValue('merge-conflict');
+    const updater = new AutoUpdater(config, emptyEvent);
+
+    // Mock the PR labels to already include the merge conflict label
+    const prNumber = 1;
+    const existingLabels = [
+      { id: 1, name: 'bug' },
+      { id: 2, name: 'merge-conflict' },
+    ];
+
+    // nock for merge attempt (409 merge conflict)
+    const mergeScope = nock('https://api.github.com:443')
+      .post(`/repos/${owner}/${repo}/merges`, {
+        commit_message: mergeOpts.commit_message,
+        base: mergeOpts.base,
+        head: mergeOpts.head,
+      })
+      .reply(409, { message: 'Merge conflict' });
+
+    const getScope = nock('https://api.github.com:443')
+      .get(`/repos/${owner}/${repo}/pulls/${prNumber}`)
+      .reply(200, { labels: existingLabels });
+
+    const updateScope = nock('https://api.github.com:443')
+      .patch(`/repos/${owner}/${repo}/issues/${prNumber}`)
+      .reply(200, {});
+
+    const setOutput = jest.fn();
+    const infoSpy = jest.spyOn(core, 'info');
+
+    await updater.merge(owner, prNumber, mergeOpts, setOutput);
+
+    expect(mergeScope.isDone()).toBe(true);
+    expect(getScope.isDone()).toBe(true);
+    expect(updateScope.isDone()).toBe(false);
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('already present'),
+    );
+  });
+
+  test('merge conflict label is configured and merge conflict label is not present', async () => {
+    (config.retryCount as jest.Mock).mockReturnValue(0);
+    (config.mergeConflictAction as jest.Mock).mockReturnValue('label');
+    (config.mergeConflictLabel as jest.Mock).mockReturnValue('merge-conflict');
+    const updater = new AutoUpdater(config, emptyEvent);
+
+    // Mock the PR labels to already include the merge conflict label
+    const prNumber = 1;
+    const existingLabels = [{ id: 1, name: 'bug' }];
+
+    // nock for merge attempt (409 merge conflict)
+    const mergeScope = nock('https://api.github.com:443')
+      .post(`/repos/${owner}/${repo}/merges`, {
+        commit_message: mergeOpts.commit_message,
+        base: mergeOpts.base,
+        head: mergeOpts.head,
+      })
+      .reply(409, { message: 'Merge conflict' });
+
+    const getScope = nock('https://api.github.com:443')
+      .get(`/repos/${owner}/${repo}/pulls/${prNumber}`)
+      .reply(200, { labels: existingLabels });
+
+    const updateScope = nock('https://api.github.com:443')
+      .patch(`/repos/${owner}/${repo}/issues/${prNumber}`)
+      .reply(200, {});
+
+    const setOutput = jest.fn();
+    const infoSpy = jest.spyOn(core, 'info');
+
+    await updater.merge(owner, prNumber, mergeOpts, setOutput);
+
+    expect(mergeScope.isDone()).toBe(true);
+    expect(getScope.isDone()).toBe(true);
+    expect(updateScope.isDone()).toBe(false);
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Added merge conflict label'),
+    );
   });
 });
