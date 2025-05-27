@@ -1,6 +1,6 @@
 # autoupdate
 
-[![Tests](https://github.com/CSSUoB/pr-auto-updater/actions/workflows/tests.yaml/badge.svg?event=push)](https://github.com/CSSUoB/pr-auto-updater/actions/workflows/tests.yaml) [![codecov](https://codecov.io/gh/CSSUoB/pr-auto-updater/graph/badge.svg?token=KDQTQH6PBC)](https://codecov.io/gh/CSSUoB/pr-auto-updater)
+[![Tests](https://github.com/CSSUoB/pr-auto-updater/actions/workflows/tests.yml/badge.svg)](https://github.com/CSSUoB/pr-auto-updater/actions/workflows/tests.yml) [![codecov](https://codecov.io/gh/CSSUoB/pr-auto-updater/graph/badge.svg?token=KDQTQH6PBC)](https://codecov.io/gh/CSSUoB/pr-auto-updater)
 
 **autoupdate** is a GitHub Action that auto-updates pull requests branches whenever changes land on their destination branch.
 
