@@ -20,7 +20,7 @@
     "@octokit/types": "^14.0.0",
     "@octokit/webhooks": "^14.0.0",
     "@octokit/webhooks-types": "^7.6.1",
-    "@types/node": "^22.15.21",
+    "@types/node": "^22.15.26",
     "@vercel/ncc": "^0.38.3",
     "ts-node": "^10.9.2"
   },
