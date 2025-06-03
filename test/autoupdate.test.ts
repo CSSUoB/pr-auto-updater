@@ -1116,7 +1116,20 @@ describe('test `merge`', () => {
 
       const setOutput = jest.fn();
 
-      if (responseTest.success) {
+      if (
+        responseTest.success &&
+        (responseTest.code === 200 || responseTest.code === 201)
+      ) {
+        // Add mock for updateRef (force update to same SHA)
+        const updateRefScope = nock('https://api.github.com:443')
+          .patch(`/repos/${owner}/${repo}/git/refs/heads/${mergeOpts.base}`, {
+            sha: 'dummy-sha',
+            force: true,
+          })
+          .reply(200, {});
+        await updater.merge(owner, 1, mergeOpts, setOutput);
+        expect(updateRefScope.isDone()).toEqual(true);
+      } else if (responseTest.success) {
         await updater.merge(owner, 1, mergeOpts, setOutput);
       } else {
         await expect(
@@ -1309,6 +1322,7 @@ describe('test `merge`', () => {
       .reply(200, pullsMock);
 
     const mergeScopes: any[] = [];
+    const updateRefScopes: nock.Scope[] = [];
     for (let i = 0; i < expectedPulls; i++) {
       let httpStatus = 200;
       let response: Record<string, unknown> = {
@@ -1331,6 +1345,16 @@ describe('test `merge`', () => {
           .post(`/repos/${owner}/${repo}/merges`)
           .reply(httpStatus, response),
       );
+      if (httpStatus === 200) {
+        updateRefScopes.push(
+          nock('https://api.github.com:443')
+            .patch(`/repos/${owner}/${repo}/git/refs/heads/${base}`, {
+              sha: 'dummy-sha',
+              force: true,
+            })
+            .reply(200, {}),
+        );
+      }
     }
 
     const updated = await updater.handlePush();
@@ -1340,6 +1364,9 @@ describe('test `merge`', () => {
     expect(needsUpdateSpy).toHaveBeenCalledTimes(expectedPulls);
     expect(pullsScope.isDone()).toBe(true);
     for (const scope of mergeScopes) {
+      expect(scope.isDone()).toBe(true);
+    }
+    for (const scope of updateRefScopes) {
       expect(scope.isDone()).toBe(true);
     }
   });
