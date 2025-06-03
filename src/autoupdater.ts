@@ -439,17 +439,32 @@ export class AutoUpdater {
           `Branch update successful, new branch HEAD: ${mergeResp.data.sha}.`,
         );
 
-        // Instead of creating a new commit, force-update the ref to itself to trigger workflows
+        const { data: currentCommit } = await this.octokit.rest.repos.getCommit(
+          {
+            owner: mergeOpts.owner,
+            repo: mergeOpts.repo,
+            ref: mergeOpts.base as string,
+          },
+        );
+
+        const emptyCommit = await this.octokit.rest.git.createCommit({
+          owner: mergeOpts.owner,
+          repo: mergeOpts.repo,
+          message: 'chore: trigger workflows',
+          tree: currentCommit.commit.tree.sha,
+          parents: [currentCommit.sha],
+        });
+
         await this.octokit.rest.git.updateRef({
           owner: mergeOpts.owner,
           repo: mergeOpts.repo,
           ref: `heads/${mergeOpts.base}`,
-          sha: mergeResp.data.sha,
-          force: true, // force update to the same SHA
+          sha: emptyCommit.data.sha,
+          force: false,
         });
 
         ghCore.info(
-          `Branch ref force-updated to trigger workflows: ${mergeResp.data.sha}`,
+          `Empty commit created to trigger workflows: ${emptyCommit.data.sha}`,
         );
       } else if (status === 204) {
         ghCore.info(
