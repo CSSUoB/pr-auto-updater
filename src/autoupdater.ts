@@ -447,11 +447,32 @@ export class AutoUpdater {
           },
         );
 
+        const blob = await this.octokit.rest.git.createBlob({
+          owner: mergeOpts.owner,
+          repo: mergeOpts.repo,
+          content: Date.now().toString(),
+          encoding: 'utf-8',
+        });
+
+        const tree = await this.octokit.rest.git.createTree({
+          owner: mergeOpts.owner,
+          repo: mergeOpts.repo,
+          base_tree: currentCommit.commit.tree.sha,
+          tree: [
+            {
+              path: 'README.md',
+              mode: '100644',
+              type: 'blob',
+              sha: blob.data.sha,
+            },
+          ],
+        });
+
         const emptyCommit = await this.octokit.rest.git.createCommit({
           owner: mergeOpts.owner,
           repo: mergeOpts.repo,
           message: 'chore: trigger workflows',
-          tree: currentCommit.commit.tree.sha,
+          tree: tree.data.sha,
           parents: [currentCommit.sha],
         });
 
