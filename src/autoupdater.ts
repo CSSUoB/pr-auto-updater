@@ -438,6 +438,34 @@ export class AutoUpdater {
         ghCore.info(
           `Branch update successful, new branch HEAD: ${mergeResp.data.sha}.`,
         );
+
+        const { data: currentCommit } = await this.octokit.rest.repos.getCommit(
+          {
+            owner: mergeOpts.owner,
+            repo: mergeOpts.repo,
+            ref: mergeOpts.base as string,
+          },
+        );
+
+        const emptyCommit = await this.octokit.rest.git.createCommit({
+          owner: mergeOpts.owner,
+          repo: mergeOpts.repo,
+          message: 'chore: trigger workflows',
+          tree: currentCommit.commit.tree.sha,
+          parents: [currentCommit.sha],
+        });
+
+        await this.octokit.rest.git.updateRef({
+          owner: mergeOpts.owner,
+          repo: mergeOpts.repo,
+          ref: `heads/${mergeOpts.base}`,
+          sha: emptyCommit.data.sha,
+          force: false,
+        });
+
+        ghCore.info(
+          `Empty commit created to trigger workflows: ${emptyCommit.data.sha}`,
+        );
       } else if (status === 204) {
         ghCore.info(
           'Branch update not required, branch is already up-to-date.',
