@@ -5,15 +5,15 @@ updates:
   schedule:
     interval: daily
   groups:
-  all:
-    patterns:
-      - "*"
+    all:
+      patterns:
+        - "*"
 
 - package-ecosystem: npm
   directory: "/"
   schedule:
     interval: daily
   groups:
-  all:
-    patterns:
-      - "*"
+    all:
+      patterns:
+        - "*"
