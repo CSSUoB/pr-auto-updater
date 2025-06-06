@@ -1006,10 +1006,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@octokit/openapi-webhooks-types@npm:11.0.0":
-  version: 11.0.0
-  resolution: "@octokit/openapi-webhooks-types@npm:11.0.0"
-  checksum: 10c0/cea59ba6b976a242fa4e6bedfab7e6fc3437381557d2c1876ca3aea5f6d4231559a378f9bc35e09593cb2d466afb4a2415be66b960f3e0a38b65b8b9f22ff90e
+"@octokit/openapi-webhooks-types@npm:12.0.3":
+  version: 12.0.3
+  resolution: "@octokit/openapi-webhooks-types@npm:12.0.3"
+  checksum: 10c0/1c2429bd939edcf6a6e8db7240a2138a897cd7d6a0922ac083d8ed58868866b036b90888eb22d1b952df75d5741e2df1aa02d38f182c5be83394dc30b24d657d
   languageName: node
   linkType: hard
 
@@ -1102,14 +1102,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@octokit/webhooks@npm:^14.0.0":
-  version: 14.0.0
-  resolution: "@octokit/webhooks@npm:14.0.0"
+"@octokit/webhooks@npm:^14.0.2":
+  version: 14.0.2
+  resolution: "@octokit/webhooks@npm:14.0.2"
   dependencies:
-    "@octokit/openapi-webhooks-types": "npm:11.0.0"
+    "@octokit/openapi-webhooks-types": "npm:12.0.3"
     "@octokit/request-error": "npm:^7.0.0"
     "@octokit/webhooks-methods": "npm:^6.0.0"
-  checksum: 10c0/d087faac8d34c6f8e18819ca7b5425352bba0e5c15751051b7d1611de710595dea0ef9dd1e2d813bc091dc1106711045d4d8d7963eb2cff2420aa69288669d4c
+  checksum: 10c0/c6ac85b321bf916cddc50df013db49a5ee5a7249874e0157f0092d368b6441fd2870afac8726a45dd999b52bffee8b30a55a0893dd0cedb191b3d36d8a4bd382
   languageName: node
   linkType: hard
 
@@ -1319,12 +1319,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^22.15.29":
-  version: 22.15.29
-  resolution: "@types/node@npm:22.15.29"
+"@types/node@npm:^22.15.30":
+  version: 22.15.30
+  resolution: "@types/node@npm:22.15.30"
   dependencies:
     undici-types: "npm:~6.21.0"
-  checksum: 10c0/602cc88c6150780cd9b5b44604754e0ce13983ae876a538861d6ecfb1511dff289e5576fffd26c841cde2142418d4bb76e2a72a382b81c04557ccb17cff29e1d
+  checksum: 10c0/ca330ac0e7fd502686d6df115fcc606aba46fd334220f749bbba2f639accdadcb23f7900603ceccdc8240be736739cad5c0b87c0fa92c9255a4dff245f07d664
   languageName: node
   linkType: hard
 
@@ -1775,10 +1775,10 @@ __metadata:
     "@actions/core": "npm:^1.10.0"
     "@actions/github": "npm:5.1.1"
     "@octokit/types": "npm:^14.0.0"
-    "@octokit/webhooks": "npm:^14.0.0"
+    "@octokit/webhooks": "npm:^14.0.2"
     "@octokit/webhooks-types": "npm:^7.6.1"
     "@types/jest": "npm:29.5.14"
-    "@types/node": "npm:^22.15.29"
+    "@types/node": "npm:^22.15.30"
     "@typescript-eslint/eslint-plugin": "npm:^8.33.1"
     "@typescript-eslint/parser": "npm:^8.33.1"
     "@vercel/ncc": "npm:^0.38.3"
