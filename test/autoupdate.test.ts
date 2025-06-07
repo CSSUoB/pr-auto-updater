@@ -738,7 +738,7 @@ describe('test `handleSchedule`', () => {
     const event = dummyScheduleEvent;
     const updater = new AutoUpdater(config, event as unknown as WebhookEvent);
 
-    await expect(updater.handleSchedule()).rejects.toThrowError();
+    await expect(updater.handleSchedule()).rejects.toThrow();
   });
 
   test('schedule event with undefined GITHUB_REF env var', async () => {
@@ -748,7 +748,7 @@ describe('test `handleSchedule`', () => {
 
     const event = dummyScheduleEvent;
     const updater = new AutoUpdater(config, event as unknown as WebhookEvent);
-    await expect(updater.handleSchedule()).rejects.toThrowError();
+    await expect(updater.handleSchedule()).rejects.toThrow();
   });
 
   test('schedule event with invalid GITHUB_REPOSITORY env var', async () => {
@@ -1121,7 +1121,7 @@ describe('test `merge`', () => {
       } else {
         await expect(
           updater.merge(owner, 1, mergeOpts, setOutput),
-        ).rejects.toThrowError();
+        ).rejects.toThrow();
       }
 
       expect(setOutput).toHaveBeenCalledTimes(1);
@@ -1149,7 +1149,7 @@ describe('test `merge`', () => {
       scopes.push(scope);
     }
 
-    await expect(updater.merge(owner, 1, mergeOpts)).rejects.toThrowError();
+    await expect(updater.merge(owner, 1, mergeOpts)).rejects.toThrow();
 
     for (const scope of scopes) {
       expect(scope.isDone()).toEqual(true);
@@ -1211,9 +1211,9 @@ describe('test `merge`', () => {
 
     const setOutput = jest.fn();
 
-    await expect(
-      updater.merge(owner, 1, mergeOpts, setOutput),
-    ).rejects.toThrowError('Must have admin rights to Repository.');
+    await expect(updater.merge(owner, 1, mergeOpts, setOutput)).rejects.toThrow(
+      'Must have admin rights to Repository.',
+    );
 
     expect(setOutput).toHaveBeenCalledTimes(1);
     expect(setOutput).toHaveBeenCalledWith(Output.Conflicted, false);
@@ -1261,9 +1261,9 @@ describe('test `merge`', () => {
       });
 
     const setOutput = jest.fn();
-    await expect(
-      updater.merge(owner, 1, mergeOpts, setOutput),
-    ).rejects.toThrowError('Merge conflict');
+    await expect(updater.merge(owner, 1, mergeOpts, setOutput)).rejects.toThrow(
+      'Merge conflict',
+    );
 
     expect(scope.isDone()).toEqual(true);
 
