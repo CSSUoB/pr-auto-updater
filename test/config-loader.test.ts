@@ -151,7 +151,7 @@ for (const testDef of tests) {
         // Ignore noImplicitAny so we can invoke the function by string index.
         // @ts-ignore
         config[testDef.name]();
-      }).toThrowError(
+      }).toThrow(
         `Environment variable '${testDef.envVar}' was not provided, please define it and try again.`,
       );
     });
