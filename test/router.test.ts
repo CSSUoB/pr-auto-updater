@@ -15,7 +15,7 @@ test('invalid event name', async () => {
   expect(AutoUpdater).toHaveBeenCalledTimes(1);
 
   const eventName = 'not-a-real-event';
-  await expect(router.route(eventName)).rejects.toThrowError(
+  await expect(router.route(eventName)).rejects.toThrow(
     `Unknown event type '${eventName}', only 'push', 'pull_request', 'workflow_run', and 'schedule' are supported.`,
   );
 
