@@ -504,13 +504,33 @@ export class AutoUpdater {
               const currentLabels = prData.labels
                 .map((l: any) => l.name)
                 .filter(Boolean);
+              // If the label is not already present, add it, and remove the filter label if it exists.
               if (!currentLabels.includes(mergeConflictLabel)) {
-                const newLabels = [...currentLabels, mergeConflictLabel];
+                const labelSet = new Set([
+                  ...currentLabels,
+                  mergeConflictLabel,
+                ]);
+
+                if (this.config.pullRequestFilter() === 'labelled') {
+                  this.config
+                    .pullRequestLabels()
+                    .forEach((label) => labelSet.delete(label));
+                }
+
+                const newLabels = Array.from(labelSet);
+
                 await this.octokit.rest.issues.update({
                   owner: mergeOpts.owner as string,
                   repo: mergeOpts.repo as string,
                   issue_number: prNumber,
                   labels: newLabels,
+                });
+                // Add a comment explaining the label
+                await this.octokit.rest.issues.createComment({
+                  owner: mergeOpts.owner as string,
+                  repo: mergeOpts.repo as string,
+                  issue_number: prNumber,
+                  body: `This pull request has a merge conflict with the base branch! Please resolve the conflict manually, remove the conflict label (if present) and re-add the filter label (if applicable).`,
                 });
                 ghCore.info(
                   `Added merge conflict label '${mergeConflictLabel}' to PR #${prNumber}.`,
