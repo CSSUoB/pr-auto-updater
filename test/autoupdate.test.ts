@@ -1093,7 +1093,9 @@ describe('test `merge`', () => {
   test('successful merge (status 200)', async () => {
     octokitMock.rest = {
       repos: {
-        merge: jest.fn().mockResolvedValue({ status: 200, data: { sha: 'abc' } }),
+        merge: jest
+          .fn()
+          .mockResolvedValue({ status: 200, data: { sha: 'abc' } }),
       },
     };
     updater.octokit.rest = octokitMock.rest;
@@ -1101,7 +1103,7 @@ describe('test `merge`', () => {
       owner,
       prNumber,
       mergeOpts,
-      setOutputMock
+      setOutputMock,
     );
     expect(result).toBe(true);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalledWith(mergeOpts);
@@ -1119,7 +1121,7 @@ describe('test `merge`', () => {
       owner,
       prNumber,
       mergeOpts,
-      setOutputMock
+      setOutputMock,
     );
     expect(result).toBe(true);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalledWith(mergeOpts);
@@ -1134,12 +1136,7 @@ describe('test `merge`', () => {
     };
     updater.octokit.rest = octokitMock.rest;
     await expect(
-      updater.merge(
-        owner,
-        prNumber,
-        mergeOpts,
-        setOutputMock
-      )
+      updater.merge(owner, prNumber, mergeOpts, setOutputMock),
     ).resolves.toBe(true);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
     expect(setOutputMock).toHaveBeenCalledWith(expect.anything(), false);
@@ -1155,12 +1152,7 @@ describe('test `merge`', () => {
     };
     updater.octokit.rest = octokitMock.rest;
     await expect(
-      updater.merge(
-        'other-owner',
-        prNumber,
-        mergeOpts,
-        setOutputMock
-      )
+      updater.merge('other-owner', prNumber, mergeOpts, setOutputMock),
     ).resolves.toBe(true);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
   });
@@ -1180,7 +1172,7 @@ describe('test `merge`', () => {
       owner,
       prNumber,
       mergeOpts,
-      setOutputMock
+      setOutputMock,
     );
     expect(result).toBe(true);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalledTimes(2);
@@ -1199,7 +1191,7 @@ describe('test `merge`', () => {
       owner,
       prNumber,
       mergeOpts,
-      setOutputMock
+      setOutputMock,
     );
     expect(result).toBe(true); // always returns true, but logs error
     expect(octokitMock.rest.repos.merge).toHaveBeenCalledTimes(2);
@@ -1208,7 +1200,9 @@ describe('test `merge`', () => {
   test('merge works when setOutputMock is not provided', async () => {
     octokitMock.rest = {
       repos: {
-        merge: jest.fn().mockResolvedValue({ status: 200, data: { sha: 'abc' } }),
+        merge: jest
+          .fn()
+          .mockResolvedValue({ status: 200, data: { sha: 'abc' } }),
       },
     };
     updater.octokit.rest = octokitMock.rest;
@@ -1227,7 +1221,12 @@ describe('test `merge`', () => {
     };
     updater.octokit.rest = octokitMock.rest;
     jest.spyOn(config, 'retryCount').mockReturnValue(0);
-    const result = await updater.merge(owner, prNumber, mergeOpts, setOutputMock);
+    const result = await updater.merge(
+      owner,
+      prNumber,
+      mergeOpts,
+      setOutputMock,
+    );
     expect(result).toBe(true); // merge always returns true, but logs error
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
   });
@@ -1245,7 +1244,12 @@ describe('test `merge`', () => {
     };
     updater.octokit.rest = octokitMock.rest;
     updater.octokit.rest.issues = octokitMock.rest.issues;
-    const result = await updater.merge(owner, prNumber, mergeOpts, setOutputMock);
+    const result = await updater.merge(
+      owner,
+      prNumber,
+      mergeOpts,
+      setOutputMock,
+    );
     expect(result).toBe(true);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
     expect(octokitMock.rest.issues.addLabels).toHaveBeenCalledWith({
@@ -1264,9 +1268,13 @@ describe('test `merge`', () => {
       },
     };
     updater.octokit.rest = octokitMock.rest;
-    const result = await updater.merge(owner, prNumber, mergeOpts, setOutputMock);
+    const result = await updater.merge(
+      owner,
+      prNumber,
+      mergeOpts,
+      setOutputMock,
+    );
     expect(result).toBe(true);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
   });
 });
-
