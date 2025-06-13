@@ -504,6 +504,9 @@ export class AutoUpdater {
               const currentLabels = prData.labels
                 .map((l: any) => l.name)
                 .filter(Boolean);
+              ghCore.info(
+                `Current labels on PR #${prNumber}: ${currentLabels.join(', ')}`,
+              );
               // If the label is not already present, add it, and remove the filter label if it exists.
               if (!currentLabels.includes(mergeConflictLabel)) {
                 const labelSet = new Set([
