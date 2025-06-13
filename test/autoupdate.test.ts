@@ -1186,3 +1186,207 @@ describe('test `update`', () => {
     expect(mergeMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('coverage for missing branches in pulls()', () => {
+  test('returns 0 and logs error if owner is missing', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const spy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const result = await updater.pulls(
+      'refs/heads/main',
+      'repo',
+      undefined as any,
+      undefined as any,
+    );
+    expect(result).toBe(0);
+    expect(spy).toHaveBeenCalledWith('Invalid repository owner provided');
+    spy.mockRestore();
+  });
+  test('returns 0 and logs error if repoName is missing', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const spy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const result = await updater.pulls(
+      'refs/heads/main',
+      undefined as any,
+      'owner',
+      'owner',
+    );
+    expect(result).toBe(0);
+    expect(spy).toHaveBeenCalledWith('Invalid repository name provided');
+    spy.mockRestore();
+  });
+});
+
+describe('merge() doMerge and merge conflict label/branches', () => {
+  test('doMerge: logs info and returns true if status is 204', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const mergeMock = jest.fn().mockResolvedValue({ status: 204, data: {} });
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = mergeMock;
+    jest.spyOn(config, 'retryCount').mockReturnValue(0);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const infoSpy = jest.spyOn(core, 'info').mockImplementation(() => {});
+    const setOutputMock = jest.fn();
+    const result = await updater.merge(
+      owner,
+      1,
+      { owner, repo, base: head, head: base } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(true);
+    expect(infoSpy).toHaveBeenCalledWith(
+      'Branch update not required, branch is already up-to-date.',
+    );
+    infoSpy.mockRestore();
+  });
+
+  test('merge: mergeConflictAction label, label not present, adds label and comment', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('label');
+    jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('conflict');
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(new Error('Merge conflict'));
+    Object.getPrototypeOf(updater.octokit.rest.pulls).get = jest
+      .fn()
+      .mockResolvedValue({ data: { labels: [{ name: 'foo' }] } });
+    Object.getPrototypeOf(updater.octokit.rest.issues).update = jest
+      .fn()
+      .mockResolvedValue({});
+    Object.getPrototypeOf(updater.octokit.rest.issues).createComment = jest
+      .fn()
+      .mockResolvedValue({});
+    jest.spyOn(config, 'retryCount').mockReturnValue(0);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const setOutputMock = jest.fn();
+    const result = await updater.merge(
+      owner,
+      1,
+      { owner, repo, base: head, head: base } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(false);
+    expect(
+      Object.getPrototypeOf(updater.octokit.rest.issues).update,
+    ).toHaveBeenCalled();
+    expect(
+      Object.getPrototypeOf(updater.octokit.rest.issues).createComment,
+    ).toHaveBeenCalled();
+  });
+
+  test('merge: mergeConflictAction label, label already present, does not add label or comment', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('label');
+    jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('conflict');
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(new Error('Merge conflict'));
+    Object.getPrototypeOf(updater.octokit.rest.pulls).get = jest
+      .fn()
+      .mockResolvedValue({ data: { labels: [{ name: 'conflict' }] } });
+    const updateSpy = jest.spyOn(updater.octokit.rest.issues, 'update');
+    const commentSpy = jest.spyOn(updater.octokit.rest.issues, 'createComment');
+    jest.spyOn(config, 'retryCount').mockReturnValue(0);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const setOutputMock = jest.fn();
+    const result = await updater.merge(
+      owner,
+      1,
+      { owner, repo, base: head, head: base } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(false);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(commentSpy).not.toHaveBeenCalled();
+    updateSpy.mockRestore();
+    commentSpy.mockRestore();
+  });
+
+  test('merge: mergeConflictAction fail, throws error and logs', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('fail');
+    jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('conflict');
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(new Error('Merge conflict'));
+    jest.spyOn(config, 'retryCount').mockReturnValue(0);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const setOutputMock = jest.fn();
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    await expect(
+      updater.merge(
+        owner,
+        1,
+        { owner, repo, base: head, head: base } as any,
+        setOutputMock,
+      ),
+    ).rejects.toThrow('Merge conflict');
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Merge conflict error trying to update branch',
+    );
+    errorSpy.mockRestore();
+  });
+
+  test('merge: mergeConflictAction label, removes filter labels if PR filter is labelled', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('label');
+    jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('conflict');
+    jest.spyOn(config, 'pullRequestFilter').mockReturnValue('labelled');
+    jest.spyOn(config, 'pullRequestLabels').mockReturnValue(['foo', 'bar']);
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(new Error('Merge conflict'));
+    Object.getPrototypeOf(updater.octokit.rest.pulls).get = jest
+      .fn()
+      .mockResolvedValue({
+        data: { labels: [{ name: 'foo' }, { name: 'baz' }] },
+      });
+    const issuesUpdate = jest
+      .spyOn(updater.octokit.rest.issues, 'update')
+      .mockResolvedValue({} as any);
+    const issuesComment = jest
+      .spyOn(updater.octokit.rest.issues, 'createComment')
+      .mockResolvedValue({} as any);
+    jest.spyOn(config, 'retryCount').mockReturnValue(0);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const setOutputMock = jest.fn();
+    const result = await updater.merge(
+      owner,
+      1,
+      { owner, repo, base: head, head: base } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(false);
+    // Should remove 'foo' and 'bar', add 'conflict', keep 'baz'
+    expect(issuesUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        labels: expect.arrayContaining(['baz', 'conflict']),
+      }),
+    );
+    expect(issuesComment).toHaveBeenCalled();
+    issuesUpdate.mockRestore();
+    issuesComment.mockRestore();
+  });
+
+  test('merge: mergeConflictAction ignore, skips update and logs', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('ignore');
+    jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('conflict');
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(new Error('Merge conflict'));
+    jest.spyOn(config, 'retryCount').mockReturnValue(0);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const infoSpy = jest.spyOn(core, 'info').mockImplementation(() => {});
+    const setOutputMock = jest.fn();
+    const result = await updater.merge(
+      owner,
+      1,
+      { owner, repo, base: head, head: base } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(false);
+    expect(infoSpy).toHaveBeenCalledWith(
+      'Merge conflict detected, skipping update.',
+    );
+    infoSpy.mockRestore();
+  });
+});
