@@ -483,7 +483,7 @@ export class AutoUpdater {
             return false;
           }
 
-          if (e.message === 'Merge conflict') {
+          if (e.message.includes('Merge conflict')) {
             setOutputFn(Output.Conflicted, true);
 
             if (mergeConflictAction === 'ignore') {
