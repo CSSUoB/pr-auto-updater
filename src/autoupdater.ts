@@ -231,7 +231,7 @@ export class AutoUpdater {
       head: baseRef,
     };
 
-    if (mergeMsg !== null && mergeMsg.length > 0) {
+    if (typeof mergeMsg === 'string' && mergeMsg.length > 0) {
       mergeOpts.commit_message = mergeMsg;
     }
 
