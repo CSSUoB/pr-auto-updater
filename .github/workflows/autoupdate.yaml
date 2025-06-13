@@ -1,18 +1,19 @@
-name: autoupdate
+name: pr-auto-update
 on:
-  push:
-    branches:
-      - 'main'
+  push: {}
 
 jobs:
-  autoupdate:
+  pr-auto-update:
+    name: Automatic PR Updater
     runs-on: ubuntu-latest
+    permissions: 
+      pull-requests: write
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v1
-      - name: autoupdate
-        uses: ./
+      - uses: CSSUoB/pr-auto-updater@v2.1.2
         env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          PR_FILTER: "labelled"
-          PR_LABELS: "sync"
+          GITHUB_TOKEN: '${{ secrets.PR_AUTO_UPDATE_TOKEN }}'
+          PR_FILTER: 'labelled'
+          PR_LABELS: 'sync'
+          MERGE_CONFLICT_ACTION: 'label'
+          MERGE_CONFLICT_LABEL: 'conflict'
