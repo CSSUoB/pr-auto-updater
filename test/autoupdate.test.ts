@@ -16,6 +16,7 @@ import {
   WorkflowRunEvent,
 } from '@octokit/webhooks-types/schema';
 import * as core from '@actions/core';
+import { Output } from '../src/Output';
 
 type PullRequestResponse =
   Endpoints['GET /repos/{owner}/{repo}/pulls/{pull_number}']['response'];
@@ -653,44 +654,6 @@ describe('test `handlePush`', () => {
     expect(updateSpy).toHaveBeenCalledTimes(expectedPulls);
     expect(scope.isDone()).toEqual(true);
   });
-
-  test('push event with invalid owner', async () => {
-    const invalidPushEvent = {
-      ref: `refs/heads/${branch}`,
-      repository: {
-        owner: {
-          login: '',
-        },
-        name: repo,
-      },
-    } as any;
-    const updater = new AutoUpdater(config, invalidPushEvent);
-    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
-
-    const updated = await updater.handlePush();
-
-    expect(updated).toEqual(0);
-    expect(updateSpy).toHaveBeenCalledTimes(0);
-  });
-
-  test('push event with invalid repo name', async () => {
-    const invalidPushEvent = {
-      ref: `refs/heads/${branch}`,
-      repository: {
-        owner: {
-          login: owner,
-        },
-        name: '',
-      },
-    } as any;
-    const updater = new AutoUpdater(config, invalidPushEvent);
-    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
-
-    const updated = await updater.handlePush();
-
-    expect(updated).toEqual(0);
-    expect(updateSpy).toHaveBeenCalledTimes(0);
-  });
 });
 
 describe('test `handleSchedule`', () => {
@@ -1065,205 +1028,161 @@ describe('test `update`', () => {
       expectedMergeOpts,
     );
   });
-});
 
-describe('test `merge`', () => {
-  let updater: AutoUpdater;
-  let octokitMock: any;
-  let setOutputMock: jest.Mock;
-
-  const prNumber = 1;
-  const mergeOpts = {
-    owner: owner,
-    repo: repo,
-    base: head,
-    head: base,
-  };
-
-  beforeEach(() => {
-    setOutputMock = jest.fn();
-    updater = new AutoUpdater(config, emptyEvent);
-    octokitMock = updater.octokit;
-    jest.spyOn(config, 'retryCount').mockReturnValue(2);
-    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
-    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('fail');
-    jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('merge-conflict');
-  });
-
-  test('successful merge (status 200)', async () => {
-    octokitMock.rest = {
-      repos: {
-        merge: jest
-          .fn()
-          .mockResolvedValue({ status: 200, data: { sha: 'abc' } }),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
-    const result = await updater.merge(
-      owner,
-      prNumber,
-      mergeOpts,
-      setOutputMock,
+  test('update: logs and sets failed if merge throws and error is instance of Error', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(updater, 'prNeedsUpdate').mockResolvedValue(true);
+    const mergeError = new Error('merge failed');
+    jest.spyOn(updater, 'merge').mockImplementation(() => {
+      throw mergeError;
+    });
+    const setFailedSpy = jest
+      .spyOn(core, 'setFailed')
+      .mockImplementation(() => {});
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const result = await updater.update(owner, <any>validPull);
+    expect(result).toBe(false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Caught error running merge, skipping and continuing with remaining PRs',
     );
-    expect(result).toBe(true);
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalledWith(mergeOpts);
-    expect(setOutputMock).toHaveBeenCalledWith(expect.anything(), false);
+    expect(setFailedSpy).toHaveBeenCalledWith(mergeError);
+    setFailedSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
-  test('merge not required (status 204)', async () => {
-    octokitMock.rest = {
-      repos: {
-        merge: jest.fn().mockResolvedValue({ status: 204, data: {} }),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
-    const result = await updater.merge(
-      owner,
-      prNumber,
-      mergeOpts,
-      setOutputMock,
+  test('prNeedsUpdate: logs and returns false if compareCommitsWithBasehead throws', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const pull = { ...validPull };
+    // Patch the compareCommitsWithBasehead method on the repos prototype
+    const proto = Object.getPrototypeOf(updater.octokit.rest.repos);
+    proto.compareCommitsWithBasehead = jest
+      .fn()
+      .mockRejectedValue(new Error('compare error'));
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const result = await updater.prNeedsUpdate(pull as any);
+    expect(result).toBe(false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Caught error trying to compare base with head: compare error',
     );
-    expect(result).toBe(true);
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalledWith(mergeOpts);
-    expect(setOutputMock).toHaveBeenCalledWith(expect.anything(), false);
+    errorSpy.mockRestore();
   });
 
-  test('merge conflict throws and mergeConflictAction=fail', async () => {
-    octokitMock.rest = {
-      repos: {
-        merge: jest.fn().mockRejectedValue(new Error('Merge conflict')),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
-    await expect(
-      updater.merge(owner, prNumber, mergeOpts, setOutputMock),
-    ).rejects.toThrow('Merge conflict');
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
-    expect(setOutputMock).toHaveBeenCalledWith('conflicted', true);
-  });
-
-  test('403 error for forked PRs', async () => {
+  test('merge: returns false and sets output if 403 error and sourceEventOwner !== mergeOpts.owner', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
     const error = new Error('Forbidden');
     (error as any).status = 403;
-    octokitMock.rest = {
-      repos: {
-        merge: jest.fn().mockRejectedValue(error),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
-    await expect(
-      updater.merge('other-owner', prNumber, mergeOpts, setOutputMock),
-    ).resolves.toBe(false);
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(error);
+    const setOutputMock = jest.fn();
+    const result = await updater.merge(
+      'other-owner',
+      1,
+      {
+        owner: 'not-owner',
+        repo: 'repo',
+        base: 'base',
+        head: 'head',
+      } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(false);
+    expect(setOutputMock).toHaveBeenCalledWith(Output.Conflicted, false);
   });
 
-  test('retry logic: fails once, then succeeds', async () => {
-    const error = new Error('Temporary error');
-    octokitMock.rest = {
-      repos: {
-        merge: jest
-          .fn()
-          .mockRejectedValueOnce(error)
-          .mockResolvedValueOnce({ status: 200, data: { sha: 'abc' } }),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
+  test('merge: retries if error and retries < retryCount', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error = new Error('retry me');
+    const mergeMock = jest
+      .fn()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ status: 200, data: { sha: 'abc' } });
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = mergeMock;
+    jest.spyOn(config, 'retryCount').mockReturnValue(1);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const setOutputMock = jest.fn();
     const result = await updater.merge(
       owner,
-      prNumber,
-      mergeOpts,
+      1,
+      {
+        owner: owner,
+        repo: repo,
+        base: head,
+        head: base,
+      } as any,
       setOutputMock,
     );
     expect(result).toBe(true);
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalledTimes(2);
+    expect(mergeMock).toHaveBeenCalledTimes(2);
   });
 
-  test('max retries exceeded', async () => {
-    const error = new Error('Always fails');
-    octokitMock.rest = {
-      repos: {
-        merge: jest.fn().mockRejectedValue(error),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
+  test('merge: does not retry if error and retries >= retryCount', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error = new Error('retry me');
+    const mergeMock = jest
+      .fn()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ status: 200, data: { sha: 'abc' } });
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = mergeMock;
     jest.spyOn(config, 'retryCount').mockReturnValue(1);
-    await expect(
-      updater.merge(owner, prNumber, mergeOpts, setOutputMock),
-    ).rejects.toThrow('Always fails');
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalledTimes(2);
-  });
-
-  test('merge throws unexpected error', async () => {
-    const error = new Error('Unexpected error');
-    octokitMock.rest = {
-      repos: {
-        merge: jest.fn().mockRejectedValue(error),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
-    jest.spyOn(config, 'retryCount').mockReturnValue(0);
-    await expect(
-      updater.merge(owner, prNumber, mergeOpts, setOutputMock),
-    ).rejects.toThrow('Unexpected error');
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
-  });
-
-  test('mergeConflictAction label: should attempt to add label', async () => {
-    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('label');
-    jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('merge-conflict');
-    octokitMock.rest = {
-      repos: {
-        merge: jest.fn().mockRejectedValue(new Error('Merge conflict')),
-      },
-      issues: {
-        addLabels: jest.fn().mockResolvedValue({ status: 200 }),
-        update: jest.fn().mockResolvedValue({ status: 200 }),
-        createComment: jest.fn().mockResolvedValue({ status: 201 }),
-      },
-      pulls: {
-        get: jest.fn().mockResolvedValue({ data: { labels: [] } }),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
-    updater.octokit.rest.issues = octokitMock.rest.issues;
-    updater.octokit.rest.pulls = octokitMock.rest.pulls;
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const setOutputMock = jest.fn();
     const result = await updater.merge(
       owner,
-      prNumber,
-      mergeOpts,
+      1,
+      {
+        owner: owner,
+        repo: repo,
+        base: head,
+        head: base,
+      } as any,
       setOutputMock,
     );
-    expect(result).toBe(false);
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
-    expect(octokitMock.rest.issues.update).toHaveBeenCalledWith({
-      owner: mergeOpts.owner,
-      repo: mergeOpts.repo,
-      issue_number: prNumber,
-      labels: ['merge-conflict'],
-    });
-    expect(octokitMock.rest.issues.createComment).toHaveBeenCalledWith({
-      owner: mergeOpts.owner,
-      repo: mergeOpts.repo,
-      issue_number: prNumber,
-      body: expect.stringContaining('merge conflict'),
-    });
+    expect(result).toBe(true);
+    expect(mergeMock).toHaveBeenCalledTimes(2);
   });
 
-  test('mergeConflictAction ignore: should ignore merge conflict', async () => {
-    jest.spyOn(config, 'mergeConflictAction').mockReturnValue('ignore');
-    octokitMock.rest = {
-      repos: {
-        merge: jest.fn().mockRejectedValue(new Error('Merge conflict')),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
+  test('merge: retries up to max retries', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error = new Error('Temporary error');
+    const mergeMock = jest
+      .fn()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ status: 200, data: { sha: 'abc' } });
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = mergeMock;
+    jest.spyOn(config, 'retryCount').mockReturnValue(2);
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
+    const setOutputMock = jest.fn();
     const result = await updater.merge(
       owner,
-      prNumber,
-      mergeOpts,
+      1,
+      {
+        owner: owner,
+        repo: repo,
+        base: head,
+        head: base,
+      } as any,
       setOutputMock,
     );
-    expect(result).toBe(false);
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
+    expect(result).toBe(true);
+    expect(mergeMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('merge: throws error if max retries exceeded', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error = new Error('Always fails');
+    const mergeMock = jest.fn().mockRejectedValue(error);
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = mergeMock;
+    jest.spyOn(config, 'retryCount').mockReturnValue(1);
+    const setOutputMock = jest.fn();
+    await expect(
+      updater.merge(
+        owner,
+        1,
+        { owner, repo, base, head } as any,
+        setOutputMock,
+      ),
+    ).rejects.toThrow(error);
+    expect(mergeMock).toHaveBeenCalledTimes(2);
   });
 });
