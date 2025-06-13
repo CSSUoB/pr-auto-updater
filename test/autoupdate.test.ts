@@ -1085,7 +1085,7 @@ describe('test `merge`', () => {
     updater = new AutoUpdater(config, emptyEvent);
     octokitMock = updater.octokit;
     jest.spyOn(config, 'retryCount').mockReturnValue(2);
-    jest.spyOn(config, 'retrySleep').mockReturnValue(1); // 1ms for fast tests
+    jest.spyOn(config, 'retrySleep').mockReturnValue(1);
     jest.spyOn(config, 'mergeConflictAction').mockReturnValue('fail');
     jest.spyOn(config, 'mergeConflictLabel').mockReturnValue('merge-conflict');
   });
@@ -1249,9 +1249,6 @@ describe('test `merge`', () => {
     });
   });
 
-  // NOTE: The following tests may need to be updated to match the actual implementation of merge:
-  // - If merge returns false for 403 or ignored conflicts, update the test to expect false.
-  // - If merge throws on error, update the test to expect rejection.
   test('mergeConflictAction ignore: should ignore merge conflict', async () => {
     jest.spyOn(config, 'mergeConflictAction').mockReturnValue('ignore');
     octokitMock.rest = {
