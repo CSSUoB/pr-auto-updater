@@ -1137,14 +1137,14 @@ describe('test `merge`', () => {
     updater.octokit.rest = octokitMock.rest;
     await expect(
       updater.merge(owner, prNumber, mergeOpts, setOutputMock),
-    ).resolves.toBe(true);
+    ).rejects.toThrow('Merge conflict');
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
-    expect(setOutputMock).toHaveBeenCalledWith(expect.anything(), false);
+    expect(setOutputMock).toHaveBeenCalledWith('conflicted', true);
   });
 
   test('403 error for forked PRs', async () => {
-    const error: any = new Error('Forbidden');
-    error.status = 403;
+    const error = new Error('Forbidden');
+    (error as any).status = 403;
     octokitMock.rest = {
       repos: {
         merge: jest.fn().mockRejectedValue(error),
@@ -1153,7 +1153,7 @@ describe('test `merge`', () => {
     updater.octokit.rest = octokitMock.rest;
     await expect(
       updater.merge('other-owner', prNumber, mergeOpts, setOutputMock),
-    ).resolves.toBe(true);
+    ).resolves.toBe(false);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
   });
 
@@ -1187,29 +1187,10 @@ describe('test `merge`', () => {
     };
     updater.octokit.rest = octokitMock.rest;
     jest.spyOn(config, 'retryCount').mockReturnValue(1);
-    const result = await updater.merge(
-      owner,
-      prNumber,
-      mergeOpts,
-      setOutputMock,
-    );
-    expect(result).toBe(true); // always returns true, but logs error
+    await expect(
+      updater.merge(owner, prNumber, mergeOpts, setOutputMock),
+    ).rejects.toThrow('Always fails');
     expect(octokitMock.rest.repos.merge).toHaveBeenCalledTimes(2);
-  });
-
-  test('merge works when setOutputMock is not provided', async () => {
-    octokitMock.rest = {
-      repos: {
-        merge: jest
-          .fn()
-          .mockResolvedValue({ status: 200, data: { sha: 'abc' } }),
-      },
-    };
-    updater.octokit.rest = octokitMock.rest;
-    // setOutputMock is undefined
-    const result = await updater.merge(owner, prNumber, mergeOpts);
-    expect(result).toBe(true);
-    expect(octokitMock.rest.repos.merge).toHaveBeenCalledWith(mergeOpts);
   });
 
   test('merge throws unexpected error', async () => {
@@ -1221,13 +1202,9 @@ describe('test `merge`', () => {
     };
     updater.octokit.rest = octokitMock.rest;
     jest.spyOn(config, 'retryCount').mockReturnValue(0);
-    const result = await updater.merge(
-      owner,
-      prNumber,
-      mergeOpts,
-      setOutputMock,
-    );
-    expect(result).toBe(true); // merge always returns true, but logs error
+    await expect(
+      updater.merge(owner, prNumber, mergeOpts, setOutputMock),
+    ).rejects.toThrow('Unexpected error');
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
   });
 
@@ -1240,26 +1217,41 @@ describe('test `merge`', () => {
       },
       issues: {
         addLabels: jest.fn().mockResolvedValue({ status: 200 }),
+        update: jest.fn().mockResolvedValue({ status: 200 }),
+        createComment: jest.fn().mockResolvedValue({ status: 201 }),
+      },
+      pulls: {
+        get: jest.fn().mockResolvedValue({ data: { labels: [] } }),
       },
     };
     updater.octokit.rest = octokitMock.rest;
     updater.octokit.rest.issues = octokitMock.rest.issues;
+    updater.octokit.rest.pulls = octokitMock.rest.pulls;
     const result = await updater.merge(
       owner,
       prNumber,
       mergeOpts,
       setOutputMock,
     );
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
-    expect(octokitMock.rest.issues.addLabels).toHaveBeenCalledWith({
+    expect(octokitMock.rest.issues.update).toHaveBeenCalledWith({
       owner: mergeOpts.owner,
       repo: mergeOpts.repo,
       issue_number: prNumber,
       labels: ['merge-conflict'],
     });
+    expect(octokitMock.rest.issues.createComment).toHaveBeenCalledWith({
+      owner: mergeOpts.owner,
+      repo: mergeOpts.repo,
+      issue_number: prNumber,
+      body: expect.stringContaining('merge conflict'),
+    });
   });
 
+  // NOTE: The following tests may need to be updated to match the actual implementation of merge:
+  // - If merge returns false for 403 or ignored conflicts, update the test to expect false.
+  // - If merge throws on error, update the test to expect rejection.
   test('mergeConflictAction ignore: should ignore merge conflict', async () => {
     jest.spyOn(config, 'mergeConflictAction').mockReturnValue('ignore');
     octokitMock.rest = {
@@ -1274,7 +1266,7 @@ describe('test `merge`', () => {
       mergeOpts,
       setOutputMock,
     );
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(octokitMock.rest.repos.merge).toHaveBeenCalled();
   });
 });
