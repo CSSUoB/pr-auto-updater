@@ -528,12 +528,12 @@ export class AutoUpdater {
                   issue_number: prNumber,
                   labels: newLabels,
                 });
-                // Add a comment explaining the label
+
                 await this.octokit.rest.issues.createComment({
                   owner: mergeOpts.owner as string,
                   repo: mergeOpts.repo as string,
                   issue_number: prNumber,
-                  body: `This pull request has a merge conflict with the base branch! Please resolve the conflict manually, remove the conflict label (if present) and re-add the filter label (if applicable).`,
+                  body: `This pull request has a merge conflict with the base branch! Please resolve the conflict manually, remove the conflict label and re-add the filter label (if applicable).`,
                 });
                 ghCore.info(
                   `Added merge conflict label '${mergeConflictLabel}' to PR #${prNumber}.`,
