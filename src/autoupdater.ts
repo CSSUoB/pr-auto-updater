@@ -469,6 +469,15 @@ export class AutoUpdater {
            * If this update was against a fork and we got a 403 then it's
            * probably because we don't have access to it.
            */
+          if (e.message.includes('Parameter token or opts.auth is required')) {
+            ghCore.error(
+              `Could not update pull request #${prNumber} due to an authorisation error. Error was: ${e.message}. Please confirm you are using the correct token and it has the correct authorisation scopes.`,
+            );
+
+            setOutputFn(Output.Conflicted, false);
+
+            return false;
+          }
           if (
             isRequestError(e) &&
             e.status === 403 &&
