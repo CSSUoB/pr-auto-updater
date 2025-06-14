@@ -465,10 +465,6 @@ export class AutoUpdater {
         break;
       } catch (e: unknown) {
         if (e instanceof Error) {
-          /**
-           * If this update was against a fork and we got a 403 then it's
-           * probably because we don't have access to it.
-           */
           if (
             isRequestError(e) &&
             e.message.includes('Parameter token or opts.auth is required')
