@@ -17,6 +17,7 @@ import {
 } from '@octokit/webhooks-types/schema';
 import * as core from '@actions/core';
 import { Output } from '../src/Output';
+import * as isRequestErrorModule from '../src/helpers/isRequestError';
 
 type PullRequestResponse =
   Endpoints['GET /repos/{owner}/{repo}/pulls/{pull_number}']['response'];
@@ -1090,6 +1091,28 @@ describe('test `update`', () => {
     expect(setOutputMock).toHaveBeenCalledWith(Output.Conflicted, false);
   });
 
+  test('merge: returns false and sets output if authorization error with token message', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error = new Error('Parameter token or opts.auth is required');
+    (error as any).status = 401;
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(error);
+    const setOutputMock = jest.fn();
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const result = await updater.merge(
+      owner,
+      1,
+      { owner, repo, base, head } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(false);
+    expect(setOutputMock).toHaveBeenCalledWith(Output.Conflicted, false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Could not update pull request #1 due to an authorisation error. Error was: Parameter token or opts.auth is required. Please confirm you are using the correct token and it has the correct authorisation scopes.',
+    );
+  });
+
   test('merge: retries if error and retries < retryCount', async () => {
     const updater = new AutoUpdater(config, emptyEvent);
     const error = new Error('retry me');
@@ -1388,5 +1411,39 @@ describe('merge() doMerge and merge conflict label/branches', () => {
       'Merge conflict detected, skipping update.',
     );
     infoSpy.mockRestore();
+  });
+});
+
+describe('AutoUpdater.merge authorisation error handling', () => {
+  test('handles missing token or opts.auth error', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const mergeOpts = { owner, repo, base, head };
+    // Create an Error instance and add status property
+    const error: Error & { status?: number } = new Error(
+      'Parameter token or opts.auth is required',
+    );
+    error.status = 401;
+    // Mock octokit.rest.repos.merge to throw the specific error
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(error);
+    // Mock isRequestError to return true
+    jest.spyOn(isRequestErrorModule, 'isRequestError').mockReturnValue(true);
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const setOutputMock = jest.fn();
+    const result = await updater.merge(
+      owner,
+      123,
+      mergeOpts as any,
+      setOutputMock,
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Could not update pull request #123 due to an authorisation error. Error was: Parameter token or opts.auth is required.',
+      ),
+    );
+    expect(setOutputMock).toHaveBeenCalledWith(Output.Conflicted, false);
+    expect(result).toBe(false);
+    errorSpy.mockRestore();
   });
 });
