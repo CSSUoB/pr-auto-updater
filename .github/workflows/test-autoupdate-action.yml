@@ -2,6 +2,13 @@ name: Test Autoupdate Action on Real Repo
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+    group: prod-pr-auto-updater
+    cancel-in-progress: true
 
 jobs:
   test-autoupdate:
@@ -52,7 +59,8 @@ jobs:
           gh pr create --base main --head test-non-conflict --title "Test Non-Conflict" --body "Testing non-conflicting PR" --repo "CSSUoB/autoupdate-action-unstable" --label "sync"
           gh pr create --base main --head test-conflict --title "Test Conflict" --body "Testing conflicting PR" --repo "CSSUoB/autoupdate-action-unstable" --label "sync"
           # Wait for autoupdate action to run (adjust sleep as needed)
-          sleep 120
+          echo "Waiting for 60 seconds for autoupdate action to process PRs..."
+          sleep 60
           # Get PR numbers
           NON_CONFLICT_PR=$(gh pr list --head test-non-conflict --json number --jq '.[0].number' --repo "CSSUoB/autoupdate-action-unstable")
           CONFLICT_PR=$(gh pr list --head test-conflict --json number --jq '.[0].number' --repo "CSSUoB/autoupdate-action-unstable")
@@ -69,3 +77,23 @@ jobs:
             exit 1
           fi
           echo "Test passed: Non-conflicting PR is mergeable and conflicting PR is labelled"
+
+      - name: Clean up test PRs and branches
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.PR_AUTO_UPDATE_TOKEN }}
+        run: |
+          cd autoupdate-action-unstable
+          # Get PR numbers
+          NON_CONFLICT_PR=$(gh pr list --head test-non-conflict --json number --jq '.[0].number' --repo "CSSUoB/autoupdate-action-unstable")
+          CONFLICT_PR=$(gh pr list --head test-conflict --json number --jq '.[0].number' --repo "CSSUoB/autoupdate-action-unstable")
+          # Close PRs if open
+          if [ -n "$NON_CONFLICT_PR" ]; then
+            gh pr close "$NON_CONFLICT_PR" --delete-branch --repo "CSSUoB/autoupdate-action-unstable" || true
+          fi
+          if [ -n "$CONFLICT_PR" ]; then
+            gh pr close "$CONFLICT_PR" --delete-branch --repo "CSSUoB/autoupdate-action-unstable" || true
+          fi
+          # Also try to delete remote branches in case PRs were already merged/closed
+          git push origin --delete test-non-conflict || true
+          git push origin --delete test-conflict || true
