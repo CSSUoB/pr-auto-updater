@@ -1091,6 +1091,28 @@ describe('test `update`', () => {
     expect(setOutputMock).toHaveBeenCalledWith(Output.Conflicted, false);
   });
 
+  test('merge: returns false and sets output if authorization error with token message', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error = new Error('Parameter token or opts.auth is required');
+    (error as any).status = 401;
+    Object.getPrototypeOf(updater.octokit.rest.repos).merge = jest
+      .fn()
+      .mockRejectedValue(error);
+    const setOutputMock = jest.fn();
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+    const result = await updater.merge(
+      owner,
+      1,
+      { owner, repo, base, head } as any,
+      setOutputMock,
+    );
+    expect(result).toBe(false);
+    expect(setOutputMock).toHaveBeenCalledWith(Output.Conflicted, false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Could not update pull request #1 due to an authorisation error. Error was: Parameter token or opts.auth is required. Please confirm you are using the correct token and it has the correct authorisation scopes.',
+    );
+  });
+
   test('merge: retries if error and retries < retryCount', async () => {
     const updater = new AutoUpdater(config, emptyEvent);
     const error = new Error('retry me');
