@@ -1,0 +1,71 @@
+name: Test Autoupdate Action on Real Repo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-autoupdate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Checkout target repo (autoupdate-action-unstable)
+        uses: actions/checkout@v4
+        with:
+          repository: CSSUoB/autoupdate-action-unstable
+          token: ${{ secrets.PR_AUTO_UPDATE_TOKEN }}
+          path: autoupdate-action-unstable
+
+      - name: Run test logic
+        env:
+          GH_TOKEN: ${{ secrets.PR_AUTO_UPDATE_TOKEN }}
+        run: |
+          cd autoupdate-action-unstable
+          git checkout main
+          git pull
+          git config user.name "cssbhamdev"
+          git config user.email "66796201+cssbhamdev@users.noreply.github.com"
+          # Create a branch with no conflict
+          git checkout -b test-non-conflict
+          NON_CONFLICT_FILE="non_conflict.txt"
+          echo "non-conflict change $(date)" >> "$NON_CONFLICT_FILE"
+          git add "$NON_CONFLICT_FILE"
+          git commit -m "Non-conflicting change"
+          git push origin test-non-conflict --force
+          # Create a branch with a conflict
+          git checkout main
+          git pull
+          git checkout -b test-conflict
+          CONFLICT_FILE="conflict.txt"
+          echo "conflict change $(date)" > "$CONFLICT_FILE"
+          git add "$CONFLICT_FILE"
+          git commit -m "Conflicting change"
+          git push origin test-conflict --force
+          # Simulate a conflict: change the same file on main
+          git checkout main
+          echo "main branch change $(date)" > "$CONFLICT_FILE"
+          git add "$CONFLICT_FILE"
+          git commit -m "Main branch conflicting change"
+          git push origin main
+          # Open PRs using gh CLI
+          gh pr create --base main --head test-non-conflict --title "Test Non-Conflict" --body "Testing non-conflicting PR" --repo "CSSUoB/autoupdate-action-unstable" --label "sync"
+          gh pr create --base main --head test-conflict --title "Test Conflict" --body "Testing conflicting PR" --repo "CSSUoB/autoupdate-action-unstable" --label "sync"
+          # Wait for autoupdate action to run (adjust sleep as needed)
+          sleep 120
+          # Get PR numbers
+          NON_CONFLICT_PR=$(gh pr list --head test-non-conflict --json number --jq '.[0].number' --repo "CSSUoB/autoupdate-action-unstable")
+          CONFLICT_PR=$(gh pr list --head test-conflict --json number --jq '.[0].number' --repo "CSSUoB/autoupdate-action-unstable")
+          # Check if non-conflicting PR is mergeable (should be true)
+          NON_CONFLICT_STATUS=$(gh pr view "$NON_CONFLICT_PR" --json mergeable --jq '.mergeable' --repo "CSSUoB/autoupdate-action-unstable")
+          if [[ "$NON_CONFLICT_STATUS" != "MERGEABLE" ]]; then
+            echo "Non-conflicting PR is not mergeable"
+            exit 1
+          fi
+          # Check if conflicting PR is labelled as conflict
+          CONFLICT_LABELS=$(gh pr view "$CONFLICT_PR" --json labels --jq '.labels[].name' --repo "CSSUoB/autoupdate-action-unstable")
+          if ! echo "$CONFLICT_LABELS" | grep -q "conflict"; then
+            echo "Conflicting PR is not labelled as conflict"
+            exit 1
+          fi
+          echo "Test passed: Non-conflicting PR is mergeable and conflicting PR is labelled"
