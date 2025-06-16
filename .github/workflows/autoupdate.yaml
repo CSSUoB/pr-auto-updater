@@ -10,7 +10,7 @@ jobs:
       pull-requests: write
       contents: write
     steps:
-      - uses: CSSUoB/pr-auto-updater@v2.1.2
+      - uses: CSSUoB/pr-auto-updater@v2.2.1
         env:
           GITHUB_TOKEN: '${{ secrets.PR_AUTO_UPDATE_TOKEN }}'
           PR_FILTER: 'labelled'
