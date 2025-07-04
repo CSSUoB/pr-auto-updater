@@ -530,12 +530,20 @@ export class AutoUpdater {
 
                 const newLabels = Array.from(labelSet);
 
+                ghCore.info(
+                  `Adding merge conflict label '${mergeConflictLabel}' to PR #${prNumber}. New labels: ${newLabels.join(', ')}`,
+                );
+
                 await this.octokit.rest.issues.update({
                   owner: mergeOpts.owner as string,
                   repo: mergeOpts.repo as string,
                   issue_number: prNumber,
                   labels: newLabels,
                 });
+
+                ghCore.info(
+                  `Attempting to add comment to PR #${prNumber} about merge conflict.`,
+                );
 
                 await this.octokit.rest.issues.createComment({
                   owner: mergeOpts.owner as string,
@@ -549,6 +557,9 @@ export class AutoUpdater {
               } else {
                 ghCore.info(
                   `Merge conflict label '${mergeConflictLabel}' already present on PR #${prNumber}.`,
+                );
+                ghCore.info(
+                  `Labels on PR #${prNumber} after merge conflict: ${currentLabels.join(', ')}.`,
                 );
               }
               return false;
