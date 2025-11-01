@@ -7,10 +7,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Set up Node.js 23.x
+      - name: Set up Node.js 25.x
         uses: actions/setup-node@v6
         with:
-          node-version: 23.x
+          node-version: 25.x
       
       - name: Enable corepack
         run: corepack enable
