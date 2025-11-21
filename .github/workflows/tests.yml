@@ -8,7 +8,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Set up Node.js 25.x
         uses: actions/setup-node@v6
         with:
