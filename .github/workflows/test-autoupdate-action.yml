@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Checkout target repo (autoupdate-action-unstable)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: CSSUoB/autoupdate-action-unstable
           token: ${{ secrets.PR_AUTO_UPDATE_TOKEN }}
