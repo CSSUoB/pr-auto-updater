@@ -267,9 +267,7 @@ export class AutoUpdater {
     }
 
     if (pull.head.repo.full_name !== pull.base.repo.full_name) {
-      ghCore.info(
-        'Pull request is from a fork, skipping...',
-      );
+      ghCore.info('Pull request is from a fork, skipping...');
       return false;
     }
 
