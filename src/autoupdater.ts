@@ -266,6 +266,13 @@ export class AutoUpdater {
       return false;
     }
 
+    if (pull.head.repo.full_name !== pull.base.repo.full_name) {
+      ghCore.info(
+        'Pull request is from a fork, skipping...',
+      );
+      return false;
+    }
+
     try {
       const { data: comparison } =
         await this.octokit.rest.repos.compareCommitsWithBasehead({
