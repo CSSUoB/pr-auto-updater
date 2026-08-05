@@ -265,7 +265,13 @@ export class AutoUpdater {
       return false;
     }
 
-    if (pull.head.repo.full_name !== pull.base.repo.full_name) {
+    // If base repo information is missing, avoid throwing when checking for forks.
+    // Only treat as a fork if both head and base repo full_name values exist
+    // and differ.
+    if (
+      pull.base?.repo?.full_name &&
+      pull.head.repo.full_name !== pull.base.repo.full_name
+    ) {
       ghCore.info('Pull request is from a fork, skipping...');
       return false;
     }
