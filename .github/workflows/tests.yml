@@ -8,9 +8,9 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Set up Node.js 25.x
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 25.x
 
@@ -26,7 +26,7 @@ jobs:
           CI: true
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           use_oidc: true
 
