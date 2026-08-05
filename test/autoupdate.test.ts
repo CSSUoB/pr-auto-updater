@@ -139,6 +139,56 @@ const validPull = {
 const clonePull = () => JSON.parse(JSON.stringify(validPull));
 
 describe('test `prNeedsUpdate`', () => {
+  test('pull request is from a fork', async () => {
+    const pull = clonePull();
+    pull.base.repo = {
+      ...pull.base.repo,
+      full_name: `${owner}/${repo}`,
+    } as any;
+    pull.head.repo = {
+      ...pull.head.repo,
+      full_name: 'someone-else/forked-repo',
+    } as any;
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    const compareSpy = jest.spyOn(
+      updater.octokit.rest.repos,
+      'compareCommitsWithBasehead',
+    );
+
+    const needsUpdate = await updater.prNeedsUpdate(
+      pull as unknown as PullRequestResponse['data'],
+    );
+
+    expect(needsUpdate).toEqual(false);
+    expect(compareSpy).not.toHaveBeenCalled();
+  });
+
+  test('pull request is not from a fork and compare request is made', async () => {
+    const pull = clonePull();
+    pull.base.repo = {
+      ...pull.base.repo,
+      full_name: `${owner}/${repo}`,
+    } as any;
+    pull.head.repo = {
+      ...pull.head.repo,
+      full_name: `${owner}/${repo}`,
+    } as any;
+
+    const scope = nock('https://api.github.com:443')
+      .get(`/repos/${owner}/${repo}/compare/${head}...${base}`)
+      .reply(200, {
+        behind_by: 0,
+      });
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    const needsUpdate = await updater.prNeedsUpdate(
+      pull as unknown as PullRequestResponse['data'],
+    );
+
+    expect(needsUpdate).toEqual(false);
+    expect(scope.isDone()).toEqual(true);
+  });
   test('pull request has already been merged', async () => {
     const pull = {
       merged: true,
