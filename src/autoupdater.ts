@@ -1,8 +1,8 @@
 import * as github from '@actions/github';
 import { GitHub } from '@actions/github/lib/utils';
 import * as ghCore from '@actions/core';
-import * as octokit from '@octokit/types';
-import {
+import type * as octokit from '@octokit/types';
+import type {
   PullRequestEvent,
   PushEvent,
   WebhookEvent,

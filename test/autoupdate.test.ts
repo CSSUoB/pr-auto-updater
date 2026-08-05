@@ -7,8 +7,8 @@ if ('GITHUB_TOKEN' in process.env) {
 import nock from 'nock';
 import config from '../src/config-loader';
 import { AutoUpdater } from '../src/autoupdater';
-import { Endpoints } from '@octokit/types';
-import {
+import type { Endpoints } from '@octokit/types';
+import type {
   PullRequestEvent,
   PushEvent,
   WebhookEvent,

@@ -1,5 +1,4 @@
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/test/config.ts'],
   clearMocks: true,
@@ -7,11 +6,7 @@ module.exports = {
   coverageDirectory: 'coverage',
   coverageProvider: 'v8',
   transform: {
-    '^.+\\.(ts|tsx)$': [
-      'ts-jest',
-      {
-        tsconfig: '<rootDir>/tsconfig.tests.json',
-      },
-    ],
+    '^.+\\.(ts|tsx)$': 'babel-jest',
   },
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
 };
