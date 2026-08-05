@@ -19,8 +19,7 @@ type MergeParameters =
   octokit.Endpoints['POST /repos/{owner}/{repo}/merges']['parameters'];
 
 type PullRequest =
-  | PullRequestResponse['data']
-  | PullRequestEvent['pull_request'];
+  PullRequestResponse['data'] | PullRequestEvent['pull_request'];
 
 type SetOutputFn = typeof ghCore.setOutput;
 
