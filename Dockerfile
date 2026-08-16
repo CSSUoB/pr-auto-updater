@@ -6,7 +6,7 @@ WORKDIR /opt/autoupdate
 
 COPY . /opt/autoupdate/
 
-RUN corepack enable 
+RUN npm install -g yarn
    
 RUN yarn install --frozen-lockfile && yarn run build
 
