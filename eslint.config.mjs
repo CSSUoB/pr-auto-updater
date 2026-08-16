@@ -18,6 +18,10 @@ const compat = new FlatCompat({
 
 export default defineConfig([
   {
+    // Generated output — never our code to lint.
+    ignores: ['coverage/', 'dist/'],
+  },
+  {
     extends: compat.extends(
       'plugin:prettier/recommended',
       'plugin:@typescript-eslint/eslint-recommended',

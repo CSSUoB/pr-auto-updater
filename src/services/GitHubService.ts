@@ -1,21 +1,32 @@
 import * as github from '@actions/github';
 import { GitHub } from '@actions/github/lib/utils';
-import { graphql } from '@octokit/graphql';
 import type * as octokit from '@octokit/types';
 
 export type MergeParameters =
   octokit.Endpoints['POST /repos/{owner}/{repo}/merges']['parameters'];
 
+const REBASE_MUTATION = `
+  mutation updatePR($input: UpdatePullRequestBranchInput!) {
+    updatePullRequestBranch(input: $input) {
+      pullRequest { id }
+    }
+  }
+`;
+
 export class GitHubService {
   public rest: InstanceType<typeof GitHub>['rest'];
   public paginate: InstanceType<typeof GitHub>['paginate'];
-  private token: string;
+  private graphql: InstanceType<typeof GitHub>['graphql'];
 
   constructor(token: string) {
-    this.token = token;
+    // `getOctokit` resolves `baseUrl` from `GITHUB_API_URL` and wires up the
+    // runner's proxy configuration, so all three clients must come from it —
+    // a hand-rolled client would always target api.github.com and break on
+    // GitHub Enterprise Server and behind proxies.
     const client = github.getOctokit(token);
     this.rest = client.rest;
     this.paginate = client.paginate;
+    this.graphql = client.graphql;
   }
 
   async compareCommits(owner: string, repo: string, basehead: string) {
@@ -67,17 +78,7 @@ export class GitHubService {
   }
 
   async rebaseBranch(pullRequestId: string) {
-    const mutation = `
-      mutation updatePR($input: UpdatePullRequestBranchInput!) {
-        updatePullRequestBranch(input: $input) {
-          pullRequest { id }
-        }
-      }
-    `;
-    const graphqlWithAuth = graphql.defaults({
-      headers: { authorization: `token ${this.token}` },
-    });
-    return graphqlWithAuth(mutation, {
+    return this.graphql(REBASE_MUTATION, {
       input: { pullRequestId, updateMethod: 'REBASE' },
     });
   }

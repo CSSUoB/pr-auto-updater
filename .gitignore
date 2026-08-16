@@ -16,5 +16,7 @@ bin/local.js
 
 dist
 
-src/*.js
-bin/*.js
+# Compiled output, should it ever be emitted next to the sources.
+src/**/*.js
+bin/**/*.js
+test/**/*.js

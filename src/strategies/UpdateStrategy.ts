@@ -3,20 +3,32 @@ import { ConfigLoader } from '../config-loader';
 import { GitHubService, MergeParameters } from '../services/GitHubService';
 import { Output } from '../Output';
 import { isRequestError } from '../helpers/isRequestError';
+import { isGraphqlResponseError } from '../helpers/isGraphqlResponseError';
+import { errorMessage } from '../helpers/errorMessage';
+import type { PullRequestWithHeadRepo } from '../types';
 
 export interface UpdateStrategy {
-  execute(sourceEventOwner: string, pull: any): Promise<boolean>;
+  readonly name: string;
+  execute(
+    sourceEventOwner: string,
+    pull: PullRequestWithHeadRepo,
+  ): Promise<boolean>;
 }
 
 abstract class BaseUpdateStrategy implements UpdateStrategy {
+  abstract readonly name: string;
+
   constructor(
     protected config: ConfigLoader,
     protected github: GitHubService,
   ) {}
 
-  abstract performUpdate(pull: any): Promise<void>;
+  abstract performUpdate(pull: PullRequestWithHeadRepo): Promise<void>;
 
-  async execute(sourceEventOwner: string, pull: any): Promise<boolean> {
+  async execute(
+    sourceEventOwner: string,
+    pull: PullRequestWithHeadRepo,
+  ): Promise<boolean> {
     const retryCount = this.config.retryCount();
     const retrySleep = this.config.retrySleep();
     const mergeOptsOwner = pull.head.repo.owner.login;
@@ -32,29 +44,27 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
         await this.performUpdate(pull);
         ghCore.setOutput(Output.Conflicted, false);
         break;
-      } catch (e: any) {
-        if (isRequestError(e)) {
-          if (e.message.includes('Parameter token or opts.auth is required')) {
-            ghCore.error(`Authorisation error: ${e.message}`);
-            ghCore.setOutput(Output.Conflicted, false);
-            return false;
-          }
-          if (e.status === 403 && sourceEventOwner !== mergeOptsOwner) {
-            ghCore.error(`Fork write access error: ${e.message}`);
-            ghCore.setOutput(Output.Conflicted, false);
-            return false;
-          }
+      } catch (e: unknown) {
+        if (this.isAuthorisationError(e)) {
+          ghCore.error(`Authorisation error: ${errorMessage(e)}`);
+          ghCore.setOutput(Output.Conflicted, false);
+          return false;
         }
 
-        if (
-          e.message?.includes('Merge conflict') ||
-          e.message?.includes('conflict')
-        ) {
+        if (this.isPermissionError(e) && sourceEventOwner !== mergeOptsOwner) {
+          ghCore.error(`Fork write access error: ${errorMessage(e)}`);
+          ghCore.setOutput(Output.Conflicted, false);
+          return false;
+        }
+
+        if (this.isConflictError(e)) {
           await this.handleConflict(pull, e);
           return false;
         }
 
-        ghCore.error(`Caught error trying to update branch: ${e.message}`);
+        ghCore.error(
+          `Caught error trying to update branch: ${errorMessage(e)}`,
+        );
 
         if (retries < retryCount) {
           ghCore.info(`Update failed, retrying in ${retrySleep}ms...`);
@@ -69,7 +79,61 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
     return true;
   }
 
-  private async handleConflict(pull: any, error: Error) {
+  /**
+   * Octokit itself raises this when no usable token was supplied, so it is
+   * always a `RequestError` regardless of which API the strategy calls.
+   */
+  private isAuthorisationError(e: unknown): boolean {
+    return (
+      e instanceof Error &&
+      isRequestError(e) &&
+      e.message.includes('Parameter token or opts.auth is required')
+    );
+  }
+
+  /**
+   * REST reports a missing write permission as HTTP 403. GraphQL returns
+   * HTTP 200 with a typed error instead, so `isRequestError` never matches it
+   * and the type has to be inspected directly.
+   */
+  private isPermissionError(e: unknown): boolean {
+    if (!(e instanceof Error)) {
+      return false;
+    }
+
+    if (isRequestError(e) && e.status === 403) {
+      return true;
+    }
+
+    if (isGraphqlResponseError(e)) {
+      return e.errors.some(
+        (err) => err.type === 'FORBIDDEN' || err.type === 'UNAUTHORIZED',
+      );
+    }
+
+    return false;
+  }
+
+  /**
+   * REST returns a literal 'Merge conflict' message, so that check stays exact
+   * — matching any error mentioning 'conflict' would misclassify unrelated
+   * failures as conflicts and skip the retry logic. GitHub controls the
+   * wording of the GraphQL equivalent, so match loosely there, but only within
+   * a GraphQL error's own messages.
+   */
+  private isConflictError(e: unknown): boolean {
+    if (!(e instanceof Error)) {
+      return false;
+    }
+
+    if (isGraphqlResponseError(e)) {
+      return e.errors.some((err) => /conflict/i.test(err.message ?? ''));
+    }
+
+    return e.message.includes('Merge conflict');
+  }
+
+  private async handleConflict(pull: PullRequestWithHeadRepo, error: unknown) {
     ghCore.setOutput(Output.Conflicted, true);
     const action = this.config.mergeConflictAction();
     const label = this.config.mergeConflictLabel();
@@ -88,9 +152,7 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
         repo,
         pull.number,
       );
-      const currentLabels = prData.labels
-        .map((l: any) => l.name)
-        .filter(Boolean);
+      const currentLabels = prData.labels.map((l) => l.name).filter(Boolean);
 
       if (!currentLabels.includes(label)) {
         const labelSet = new Set([...currentLabels, label]);
@@ -112,7 +174,7 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
           owner,
           repo,
           pull.number,
-          `This pull request has a merge conflict with the base branch! Please resolve the conflict manually.`,
+          `This pull request has a merge conflict with the base branch! Please resolve the conflict manually, remove the conflict label and re-add the filter label (if applicable).`,
         );
       }
       return; // Exit here if action was label
@@ -125,7 +187,9 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
 }
 
 export class MergeUpdateStrategy extends BaseUpdateStrategy {
-  async performUpdate(pull: any): Promise<void> {
+  readonly name = 'merge';
+
+  async performUpdate(pull: PullRequestWithHeadRepo): Promise<void> {
     const mergeMsg = this.config.mergeMsg();
     const mergeOpts: MergeParameters = {
       owner: pull.head.repo.owner.login,
@@ -137,17 +201,32 @@ export class MergeUpdateStrategy extends BaseUpdateStrategy {
     if (mergeMsg) mergeOpts.commit_message = mergeMsg;
 
     const mergeResp = await this.github.mergeBranch(mergeOpts);
-    if (mergeResp.status === 200 || mergeResp.status === 201) {
+
+    // Octokit types this response as a 201, but the merge endpoint also
+    // returns a 204 when the branch is already up to date.
+    // See https://docs.github.com/en/rest/branches/branches#merge-a-branch
+    const status: number = mergeResp.status;
+
+    if (status === 200 || status === 201) {
       ghCore.info(`Branch update successful, new HEAD: ${mergeResp.data.sha}.`);
-    } else if (mergeResp.status === 204) {
+    } else if (status === 204) {
       ghCore.info('Branch update not required, branch is already up-to-date.');
     }
   }
 }
 
 export class RebaseUpdateStrategy extends BaseUpdateStrategy {
-  async performUpdate(pull: any): Promise<void> {
-    // Note: Node ID must exist on the GraphQL PullRequest object.
+  readonly name = 'rebase';
+
+  async performUpdate(pull: PullRequestWithHeadRepo): Promise<void> {
+    // The GraphQL mutation identifies the pull request by its node ID, which
+    // both the REST list response and the webhook payload provide.
+    if (!pull.node_id) {
+      throw new Error(
+        `Cannot rebase pull request #${pull.number}, it has no node ID.`,
+      );
+    }
+
     await this.github.rebaseBranch(pull.node_id);
     ghCore.info(`Branch update successful via rebase.`);
   }

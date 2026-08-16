@@ -94,15 +94,15 @@ jobs:
     steps:
       - uses: docker://chinthakagodawita/autoupdate-action:v1
         env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          DRY_RUN: "false"
-          PR_FILTER: "labelled"
-          PR_LABELS: "autoupdate,keep up-to-date,integration"
-          EXCLUDED_LABELS: "dependencies,wontfix"
-          MERGE_MSG: "Branch was auto-updated."
-          RETRY_COUNT: "5"
-          RETRY_SLEEP: "300"
-          MERGE_CONFLICT_ACTION: "fail"
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          DRY_RUN: 'false'
+          PR_FILTER: 'labelled'
+          PR_LABELS: 'autoupdate,keep up-to-date,integration'
+          EXCLUDED_LABELS: 'dependencies,wontfix'
+          MERGE_MSG: 'Branch was auto-updated.'
+          RETRY_COUNT: '5'
+          RETRY_SLEEP: '300'
+          MERGE_CONFLICT_ACTION: 'fail'
 ```
 
 ## Outputs
@@ -125,8 +125,8 @@ jobs:
       - uses: docker://chinthakagodawita/autoupdate-action:v1
         id: autoupdate
         env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          MERGE_CONFLICT_ACTION: "ignore"
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          MERGE_CONFLICT_ACTION: 'ignore'
 
       - run: echo 'Merge conflicts found!'
         if: ${{ steps.autoupdate.outputs.conflicted }}

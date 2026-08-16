@@ -14,6 +14,12 @@ import {
   MergeUpdateStrategy,
   RebaseUpdateStrategy,
 } from './strategies/UpdateStrategy';
+import { errorMessage } from './helpers/errorMessage';
+import type {
+  PullRequest,
+  PullRequestResponse,
+  PullRequestWithHeadRepo,
+} from './types';
 
 export class AutoUpdater {
   eventData: WebhookEvent;
@@ -112,7 +118,11 @@ export class AutoUpdater {
     for await (const pullsPage of this.github.paginate.iterator(
       paginatorOpts,
     )) {
-      for (const pull of pullsPage.data) {
+      // `paginate.iterator` cannot infer a response type from pre-merged
+      // endpoint options, so it hands back `unknown` page data.
+      const pagePulls = pullsPage.data as PullRequestResponse['data'][];
+
+      for (const pull of pagePulls) {
         ghCore.startGroup(`PR-${pull.number}`);
         const isUpdated = await this.update(owner, pull);
         ghCore.endGroup();
@@ -122,7 +132,7 @@ export class AutoUpdater {
     return updated;
   }
 
-  async update(sourceEventOwner: string, pull: any): Promise<boolean> {
+  async update(sourceEventOwner: string, pull: PullRequest): Promise<boolean> {
     ghCore.info(`Evaluating pull request #${pull.number}...`);
 
     const prNeedsUpdate = await this.evaluator.prNeedsUpdate(pull);
@@ -134,21 +144,25 @@ export class AutoUpdater {
 
     if (this.config.dryRun()) {
       ghCore.warning(
-        `Would have merged ref '${pull.head.ref}' into ref '${pull.base.ref}' but DRY_RUN was enabled.`,
+        `Would have updated branch '${pull.head.ref}' with changes from ref '${pull.base.ref}' via ${this.strategy.name} but DRY_RUN was enabled.`,
       );
       return true;
     }
 
-    if (pull.head.repo === null) {
+    if (!pull.head.repo) {
       ghCore.error(`Could not determine repository for this pull request.`);
       return false;
     }
 
     try {
-      return await this.strategy.execute(sourceEventOwner, pull);
-    } catch (e: any) {
-      ghCore.error(`Caught error running update: ${e.message}`);
-      ghCore.setFailed(e);
+      // Safe to narrow: the check above established that `head.repo` exists.
+      return await this.strategy.execute(
+        sourceEventOwner,
+        pull as PullRequestWithHeadRepo,
+      );
+    } catch (e: unknown) {
+      ghCore.error(`Caught error running update: ${errorMessage(e)}`);
+      ghCore.setFailed(e instanceof Error ? e : String(e));
       return false;
     }
   }

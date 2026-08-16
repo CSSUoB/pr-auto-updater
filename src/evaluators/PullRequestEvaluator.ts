@@ -1,6 +1,8 @@
 import * as ghCore from '@actions/core';
 import { ConfigLoader } from '../config-loader';
 import { GitHubService } from '../services/GitHubService';
+import { errorMessage } from '../helpers/errorMessage';
+import type { PullRequest } from '../types';
 
 export class PullRequestEvaluator {
   constructor(
@@ -8,7 +10,7 @@ export class PullRequestEvaluator {
     private github: GitHubService,
   ) {}
 
-  async prNeedsUpdate(pull: any): Promise<boolean> {
+  async prNeedsUpdate(pull: PullRequest): Promise<boolean> {
     if (pull.merged === true) {
       ghCore.warning('Skipping pull request, already merged.');
       return false;
@@ -45,9 +47,9 @@ export class PullRequestEvaluator {
         ghCore.info('Skipping pull request, up-to-date with base branch.');
         return false;
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       ghCore.error(
-        `Caught error trying to compare base with head: ${e.message}`,
+        `Caught error trying to compare base with head: ${errorMessage(e)}`,
       );
       return false;
     }

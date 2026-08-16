@@ -7,8 +7,8 @@ on:
       - main
 
 concurrency:
-    group: prod-pr-auto-updater
-    cancel-in-progress: true
+  group: prod-pr-auto-updater
+  cancel-in-progress: true
 
 jobs:
   test-autoupdate:

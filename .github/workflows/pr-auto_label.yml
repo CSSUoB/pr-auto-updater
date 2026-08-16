@@ -1,4 +1,4 @@
-name: "Automatically mark PRs to sync"
+name: 'Automatically mark PRs to sync'
 
 on:
   pull_request:

@@ -1,0 +1,9 @@
+# Dependencies and generated output.
+node_modules/
+.yarn/
+coverage/
+dist/
+yarn.lock
+
+# Binary assets.
+docs/images/

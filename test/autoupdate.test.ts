@@ -8,10 +8,20 @@ import nock from 'nock';
 import config from '../src/config-loader';
 import { AutoUpdater } from '../src/autoupdater';
 import type { Endpoints } from '@octokit/types';
-import type { PushEvent, WebhookEvent } from '@octokit/webhooks-types/schema';
+import type {
+  PullRequestEvent,
+  PushEvent,
+  WebhookEvent,
+  WorkflowDispatchEvent,
+  WorkflowRunEvent,
+} from '@octokit/webhooks-types/schema';
 import * as core from '@actions/core';
 import { Output } from '../src/Output';
 import * as isRequestErrorModule from '../src/helpers/isRequestError';
+import {
+  MergeUpdateStrategy,
+  RebaseUpdateStrategy,
+} from '../src/strategies/UpdateStrategy';
 
 type PullRequestResponse =
   Endpoints['GET /repos/{owner}/{repo}/pulls/{pull_number}']['response'];
@@ -22,6 +32,14 @@ beforeEach(() => {
   jest.resetAllMocks();
   (config.githubToken as jest.Mock).mockReturnValue('test-token');
   (config.updateMethod as jest.Mock).mockReturnValue('merge'); // Default to merge for legacy tests
+});
+
+// `resetAllMocks` blanks a spy's implementation rather than restoring it, so
+// without this a spied-on module function (e.g. `isRequestError`) would return
+// undefined for every subsequent test in the file.
+afterEach(() => {
+  jest.restoreAllMocks();
+  nock.cleanAll();
 });
 
 const emptyEvent = {} as WebhookEvent;
@@ -37,6 +55,33 @@ const dummyPushEvent: PushEvent = {
     owner: {
       login: owner,
     },
+    name: repo,
+  },
+} as any;
+const dummyWorkflowDispatchEvent: WorkflowDispatchEvent = {
+  ref: `refs/heads/${branch}`,
+  repository: {
+    owner: { login: owner },
+    name: repo,
+  },
+} as any;
+const dummyWorkflowRunPushEvent: WorkflowRunEvent = {
+  workflow_run: {
+    event: 'push',
+    head_branch: branch,
+  },
+  repository: {
+    owner: { name: owner },
+    name: repo,
+  },
+} as any;
+const dummyWorkflowRunPullRequestEvent: WorkflowRunEvent = {
+  workflow_run: {
+    event: 'pull_request',
+    head_branch: branch,
+  },
+  repository: {
+    owner: { name: owner },
     name: repo,
   },
 } as any;
@@ -526,6 +571,25 @@ describe('test `update`', () => {
     );
   });
 
+  test('update: reports a non-Error thrown by the strategy', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(updater.evaluator, 'prNeedsUpdate').mockResolvedValue(true);
+    jest.spyOn(updater.strategy, 'execute').mockRejectedValue('a string throw');
+
+    const setFailedSpy = jest
+      .spyOn(core, 'setFailed')
+      .mockImplementation(() => {});
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+
+    const result = await updater.update(owner, <any>validPull);
+
+    expect(result).toBe(false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Caught error running update: a string throw',
+    );
+    expect(setFailedSpy).toHaveBeenCalledWith('a string throw');
+  });
+
   test('update: logs and sets failed if strategy execute throws', async () => {
     const updater = new AutoUpdater(config, emptyEvent);
     jest.spyOn(updater.evaluator, 'prNeedsUpdate').mockResolvedValue(true);
@@ -680,5 +744,799 @@ describe('MergeUpdateStrategy authorisation error handling', () => {
     expect(result).toBe(false);
     errorSpy.mockRestore();
     setOutputSpy.mockRestore();
+  });
+});
+
+describe('test `handlePullRequest`', () => {
+  test('pull request event with an update triggered', async () => {
+    const event = { pull_request: clonePull() } as PullRequestEvent;
+    const updater = new AutoUpdater(config, event);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+
+    const updated = await updater.handlePullRequest();
+
+    expect(updated).toEqual(true);
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('pull request event without an update', async () => {
+    const event = { pull_request: clonePull() } as PullRequestEvent;
+    const updater = new AutoUpdater(config, event);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(false);
+
+    const updated = await updater.handlePullRequest();
+
+    expect(updated).toEqual(false);
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('pull request head repo is null', async () => {
+    const event = {
+      action: 'synchronize',
+      pull_request: { head: { repo: null } },
+    } as any;
+    const updater = new AutoUpdater(config, event);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+
+    const updated = await updater.handlePullRequest();
+
+    expect(updated).toEqual(false);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('test `handleWorkflowDispatch`', () => {
+  test('workflow dispatch event on a branch with PRs', async () => {
+    const updater = new AutoUpdater(config, dummyWorkflowDispatchEvent);
+    const pullsMock = [
+      { id: 0, number: 0 },
+      { id: 1, number: 1 },
+    ];
+
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+    const scope = nock('https://api.github.com:443')
+      .get(
+        `/repos/${owner}/${repo}/pulls?base=${branch}&state=open&sort=updated&direction=desc`,
+      )
+      .reply(200, pullsMock);
+
+    const updated = await updater.handleWorkflowDispatch();
+
+    expect(updated).toEqual(2);
+    expect(updateSpy).toHaveBeenCalledTimes(2);
+    expect(scope.isDone()).toEqual(true);
+  });
+});
+
+describe('test `handleWorkflowRun`', () => {
+  const cloneEvent = () =>
+    JSON.parse(JSON.stringify(dummyWorkflowRunPushEvent));
+
+  test('workflow_run event by push event on a non-branch', async () => {
+    const event = cloneEvent();
+    event.workflow_run.head_branch = '';
+    const updater = new AutoUpdater(config, event);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+
+    const updated = await updater.handleWorkflowRun();
+
+    expect(updated).toEqual(0);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  test('workflow_run event with an unsupported event type', async () => {
+    const event = cloneEvent();
+    event.workflow_run.event = 'pull_request_review';
+    const updater = new AutoUpdater(config, event);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+
+    const updated = await updater.handleWorkflowRun();
+
+    expect(updated).toEqual(0);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  test('workflow_run event by push event on a branch without any PRs', async () => {
+    const updater = new AutoUpdater(config, dummyWorkflowRunPushEvent);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+    const scope = nock('https://api.github.com:443')
+      .get(
+        `/repos/${owner}/${repo}/pulls?base=${branch}&state=open&sort=updated&direction=desc`,
+      )
+      .reply(200, []);
+
+    const updated = await updater.handleWorkflowRun();
+
+    expect(updated).toEqual(0);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('workflow_run event by push event on a branch with PRs', async () => {
+    const updater = new AutoUpdater(config, dummyWorkflowRunPushEvent);
+    const pullsMock = [
+      { id: 0, number: 0 },
+      { id: 1, number: 1 },
+    ];
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+    const scope = nock('https://api.github.com:443')
+      .get(
+        `/repos/${owner}/${repo}/pulls?base=${branch}&state=open&sort=updated&direction=desc`,
+      )
+      .reply(200, pullsMock);
+
+    const updated = await updater.handleWorkflowRun();
+
+    expect(updated).toEqual(2);
+    expect(updateSpy).toHaveBeenCalledTimes(2);
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('workflow_run event by pull_request event with an update triggered', async () => {
+    const updater = new AutoUpdater(config, dummyWorkflowRunPullRequestEvent);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+    const scope = nock('https://api.github.com:443')
+      .get(
+        `/repos/${owner}/${repo}/pulls?base=${branch}&state=open&sort=updated&direction=desc`,
+      )
+      .reply(200, [{ id: 0, number: 0 }]);
+
+    const updated = await updater.handleWorkflowRun();
+
+    expect(updated).toEqual(1);
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('workflow_run event by pull_request event without an update', async () => {
+    const updater = new AutoUpdater(config, dummyWorkflowRunPullRequestEvent);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(false);
+    const scope = nock('https://api.github.com:443')
+      .get(
+        `/repos/${owner}/${repo}/pulls?base=${branch}&state=open&sort=updated&direction=desc`,
+      )
+      .reply(200, [{ id: 0, number: 0 }]);
+
+    const updated = await updater.handleWorkflowRun();
+
+    expect(updated).toEqual(0);
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(scope.isDone()).toEqual(true);
+  });
+});
+
+describe('test `handleSchedule` edge cases', () => {
+  test('schedule event with undefined GITHUB_REPOSITORY env var', async () => {
+    (config.githubRef as jest.Mock).mockReturnValue(`refs/heads/${base}`);
+    (config.githubRepository as jest.Mock).mockImplementation(() => {
+      throw new Error('Environment variable was not provided');
+    });
+
+    const updater = new AutoUpdater(
+      config,
+      dummyScheduleEvent as unknown as WebhookEvent,
+    );
+
+    await expect(updater.handleSchedule()).rejects.toThrow();
+  });
+
+  test('schedule event with undefined GITHUB_REF env var', async () => {
+    (config.githubRepository as jest.Mock).mockReturnValue(`${owner}/${repo}`);
+    (config.githubRef as jest.Mock).mockImplementation(() => {
+      throw new Error('Environment variable was not provided');
+    });
+
+    const updater = new AutoUpdater(
+      config,
+      dummyScheduleEvent as unknown as WebhookEvent,
+    );
+
+    await expect(updater.handleSchedule()).rejects.toThrow();
+  });
+
+  test('schedule event with invalid GITHUB_REPOSITORY env var', async () => {
+    (config.githubRef as jest.Mock).mockReturnValue(`refs/heads/${base}`);
+    (config.githubRepository as jest.Mock).mockReturnValue('');
+
+    const updater = new AutoUpdater(
+      config,
+      dummyScheduleEvent as unknown as WebhookEvent,
+    );
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+
+    const updated = await updater.handleSchedule();
+
+    expect(updated).toEqual(0);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('test `pulls` guard clauses', () => {
+  test('push event on a branch without any PRs', async () => {
+    const updater = new AutoUpdater(config, dummyPushEvent);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+    const scope = nock('https://api.github.com:443')
+      .get(
+        `/repos/${owner}/${repo}/pulls?base=${branch}&state=open&sort=updated&direction=desc`,
+      )
+      .reply(200, []);
+
+    const updated = await updater.handlePush();
+
+    expect(updated).toEqual(0);
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('returns 0 if the owner is missing', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+
+    const result = await updater.pulls(
+      'refs/heads/main',
+      repo,
+      undefined as any,
+      undefined as any,
+    );
+
+    expect(result).toEqual(0);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  test('returns 0 if the repo name is missing', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const updateSpy = jest.spyOn(updater, 'update').mockResolvedValue(true);
+
+    const result = await updater.pulls(
+      'refs/heads/main',
+      undefined as any,
+      owner,
+      owner,
+    );
+
+    expect(result).toEqual(0);
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('`prNeedsUpdate` additional filters', () => {
+  const nockCompare = (behindBy = 1) =>
+    nock('https://api.github.com:443')
+      .get(`/repos/${owner}/${repo}/compare/${head}...${base}`)
+      .reply(200, { behind_by: behindBy });
+
+  beforeEach(() => {
+    (config.excludedLabels as jest.Mock).mockReturnValue([]);
+    (config.pullRequestReadyState as jest.Mock).mockReturnValue('all');
+  });
+
+  test('returns false and logs if the compare request throws', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest
+      .spyOn(updater.github, 'compareCommits')
+      .mockRejectedValue(new Error('compare error'));
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+
+    const needsUpdate = await updater.evaluator.prNeedsUpdate(clonePull());
+
+    expect(needsUpdate).toEqual(false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Caught error trying to compare base with head: compare error',
+    );
+    errorSpy.mockRestore();
+  });
+
+  test('pull request labels do not match', async () => {
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('labelled');
+    (config.pullRequestLabels as jest.Mock).mockReturnValue(['three', 'four']);
+    const scope = nockCompare();
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    const needsUpdate = await updater.evaluator.prNeedsUpdate(clonePull());
+
+    expect(needsUpdate).toEqual(false);
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('excluded labels are checked even when a label has no name', async () => {
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('all');
+    (config.excludedLabels as jest.Mock).mockReturnValue(['excluded']);
+    const scope = nockCompare();
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    const needsUpdate = await updater.evaluator.prNeedsUpdate(
+      invalidLabelPull as unknown as PullRequestResponse['data'],
+    );
+
+    expect(needsUpdate).toEqual(true);
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('pull request is not against a protected branch', async () => {
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('protected');
+    const comparePr = nockCompare();
+    const getBranch = nock('https://api.github.com:443')
+      .get(`/repos/${owner}/${repo}/branches/${base}`)
+      .reply(200, { protected: false });
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    const needsUpdate = await updater.evaluator.prNeedsUpdate(clonePull());
+
+    expect(needsUpdate).toEqual(false);
+    expect(comparePr.isDone()).toEqual(true);
+    expect(getBranch.isDone()).toEqual(true);
+  });
+
+  test('pull request has auto_merge enabled', async () => {
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('auto_merge');
+    const scope = nockCompare();
+    const pull = clonePull();
+    pull.auto_merge = { merge_method: 'merge' };
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    const needsUpdate = await updater.evaluator.prNeedsUpdate(pull);
+
+    expect(needsUpdate).toEqual(true);
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('pull request does not have auto_merge enabled', async () => {
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('auto_merge');
+    const scope = nockCompare();
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    const needsUpdate = await updater.evaluator.prNeedsUpdate(clonePull());
+
+    expect(needsUpdate).toEqual(false);
+    expect(scope.isDone()).toEqual(true);
+  });
+
+  test('pull request ready state is filtered to ready PRs only', async () => {
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('all');
+    (config.pullRequestReadyState as jest.Mock).mockReturnValue(
+      'ready_for_review',
+    );
+    const readyScope = nockCompare();
+    const draftScope = nockCompare();
+    const draftPull = Object.assign(clonePull(), { draft: true });
+
+    const updater = new AutoUpdater(config, emptyEvent);
+
+    expect(await updater.evaluator.prNeedsUpdate(clonePull())).toEqual(true);
+    expect(await updater.evaluator.prNeedsUpdate(draftPull)).toEqual(false);
+    expect(readyScope.isDone()).toEqual(true);
+    expect(draftScope.isDone()).toEqual(true);
+  });
+});
+
+describe('`update` additional cases', () => {
+  test('pull request without a head repository', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(updater.evaluator, 'prNeedsUpdate').mockResolvedValue(true);
+    const strategySpy = jest.spyOn(updater.strategy, 'execute');
+    const pull = { ...validPull, head: { ...validPull.head, repo: null } };
+
+    const needsUpdate = await updater.update(owner, <any>pull);
+
+    expect(needsUpdate).toEqual(false);
+    expect(strategySpy).not.toHaveBeenCalled();
+  });
+
+  test('merge with no message omits commit_message', async () => {
+    (config.mergeMsg as jest.Mock).mockReturnValue('');
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest.spyOn(updater.evaluator, 'prNeedsUpdate').mockResolvedValue(true);
+    const mergeApiSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockResolvedValue({ status: 201, data: { sha: '123' } } as any);
+
+    const needsUpdate = await updater.update(owner, <any>validPull);
+
+    expect(needsUpdate).toEqual(true);
+    expect(mergeApiSpy).toHaveBeenCalledWith({
+      owner: validPull.head.repo.owner.login,
+      repo: validPull.head.repo.name,
+      base: validPull.head.ref,
+      head: validPull.base.ref,
+    });
+  });
+});
+
+describe('MergeUpdateStrategy retry logic', () => {
+  beforeEach(() => {
+    (config.retrySleep as jest.Mock).mockReturnValue(1);
+  });
+
+  test('retries a transient failure and then succeeds', async () => {
+    (config.retryCount as jest.Mock).mockReturnValue(1);
+    const updater = new AutoUpdater(config, emptyEvent);
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValueOnce(new Error('Temporary error'))
+      .mockResolvedValueOnce({ status: 201, data: { sha: 'abc' } } as any);
+
+    const result = await updater.strategy.execute(owner, mergeTestPull as any);
+
+    expect(result).toBe(true);
+    expect(mergeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('retries up to the configured maximum', async () => {
+    (config.retryCount as jest.Mock).mockReturnValue(3);
+    const updater = new AutoUpdater(config, emptyEvent);
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValue(new Error('Always fails'));
+
+    await expect(
+      updater.strategy.execute(owner, mergeTestPull as any),
+    ).rejects.toThrow('Always fails');
+
+    // Initial attempt plus three retries.
+    expect(mergeSpy).toHaveBeenCalledTimes(4);
+  });
+
+  test('throws immediately when retries are disabled', async () => {
+    (config.retryCount as jest.Mock).mockReturnValue(0);
+    const updater = new AutoUpdater(config, emptyEvent);
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValue(new Error('Always fails'));
+    const setOutputSpy = jest
+      .spyOn(core, 'setOutput')
+      .mockImplementation(() => {});
+
+    await expect(
+      updater.strategy.execute(owner, mergeTestPull as any),
+    ).rejects.toThrow('Always fails');
+
+    expect(mergeSpy).toHaveBeenCalledTimes(1);
+    expect(setOutputSpy).toHaveBeenCalledWith(Output.Conflicted, false);
+  });
+});
+
+describe('update strategy error classification', () => {
+  beforeEach(() => {
+    (config.retrySleep as jest.Mock).mockReturnValue(1);
+    (config.retryCount as jest.Mock).mockReturnValue(3);
+  });
+
+  test('returns false without retrying on a 403 from a fork', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error: Error & { status?: number } = new Error('Forbidden');
+    error.status = 403;
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValue(error);
+    const setOutputSpy = jest
+      .spyOn(core, 'setOutput')
+      .mockImplementation(() => {});
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+
+    const result = await updater.strategy.execute(
+      'a-different-owner',
+      mergeTestPull as any,
+    );
+
+    expect(result).toBe(false);
+    expect(mergeSpy).toHaveBeenCalledTimes(1);
+    expect(setOutputSpy).toHaveBeenCalledWith(Output.Conflicted, false);
+    expect(errorSpy).toHaveBeenCalledWith('Fork write access error: Forbidden');
+  });
+
+  test('retries a 403 when the pull request is not from a fork', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error: Error & { status?: number } = new Error('Forbidden');
+    error.status = 403;
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ status: 201, data: { sha: 'abc' } } as any);
+
+    const result = await updater.strategy.execute(owner, mergeTestPull as any);
+
+    expect(result).toBe(true);
+    expect(mergeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  // Regression test: matching any error mentioning 'conflict' would misclassify
+  // unrelated failures, skipping the retry logic and mislabelling the PR.
+  test('an unrelated error mentioning "conflict" is retried, not labelled', async () => {
+    (config.mergeConflictAction as jest.Mock).mockReturnValue('label');
+    (config.mergeConflictLabel as jest.Mock).mockReturnValue('conflict');
+    const updater = new AutoUpdater(config, emptyEvent);
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValueOnce(new Error('Scheduling conflict with another job'))
+      .mockResolvedValueOnce({ status: 201, data: { sha: 'abc' } } as any);
+    const labelSpy = jest.spyOn(updater.github, 'updateIssueLabels');
+    const setOutputSpy = jest
+      .spyOn(core, 'setOutput')
+      .mockImplementation(() => {});
+
+    const result = await updater.strategy.execute(owner, mergeTestPull as any);
+
+    expect(result).toBe(true);
+    expect(mergeSpy).toHaveBeenCalledTimes(2);
+    expect(labelSpy).not.toHaveBeenCalled();
+    expect(setOutputSpy).not.toHaveBeenCalledWith(Output.Conflicted, true);
+  });
+
+  test('a GraphQL error entry without a message is not a conflict', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const error = new Error('Request failed');
+    (error as any).errors = [{ type: 'INTERNAL' }];
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ status: 201, data: { sha: 'abc' } } as any);
+
+    const result = await updater.strategy.execute(owner, mergeTestPull as any);
+
+    expect(result).toBe(true);
+    expect(mergeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('a thrown value with no message is not a conflict', async () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+    const mergeSpy = jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValueOnce({})
+      .mockResolvedValueOnce({ status: 201, data: { sha: 'abc' } } as any);
+
+    const result = await updater.strategy.execute(owner, mergeTestPull as any);
+
+    expect(result).toBe(true);
+    expect(mergeSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('conflict labelling removes the configured filter labels', async () => {
+    (config.mergeConflictAction as jest.Mock).mockReturnValue('label');
+    (config.mergeConflictLabel as jest.Mock).mockReturnValue('conflict');
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('labelled');
+    (config.pullRequestLabels as jest.Mock).mockReturnValue(['foo', 'bar']);
+
+    const updater = new AutoUpdater(config, emptyEvent);
+    jest
+      .spyOn(updater.github, 'mergeBranch')
+      .mockRejectedValue(new Error('Merge conflict'));
+    jest.spyOn(updater.github, 'getPullRequest').mockResolvedValue({
+      data: { labels: [{ name: 'foo' }, { name: 'baz' }] },
+    } as any);
+    const issuesUpdate = jest
+      .spyOn(updater.github, 'updateIssueLabels')
+      .mockResolvedValue({} as any);
+    const issuesComment = jest
+      .spyOn(updater.github, 'createIssueComment')
+      .mockResolvedValue({} as any);
+
+    const result = await updater.strategy.execute(owner, mergeTestPull as any);
+
+    expect(result).toBe(false);
+    // 'foo' is a filter label and is dropped; 'baz' is unrelated and kept.
+    expect(issuesUpdate).toHaveBeenCalledWith(owner, repo, 1, [
+      'baz',
+      'conflict',
+    ]);
+    expect(issuesComment).toHaveBeenCalled();
+  });
+});
+
+describe('RebaseUpdateStrategy', () => {
+  const rebasePull = { ...mergeTestPull, node_id: 'PR_node_1' };
+
+  const rebaseUpdater = () => {
+    (config.updateMethod as jest.Mock).mockReturnValue('rebase');
+    return new AutoUpdater(config, emptyEvent);
+  };
+
+  // Mirrors @octokit/graphql's GraphqlResponseError: the GraphQL API replies
+  // with HTTP 200 and an `errors` array, so these carry no `status` and are
+  // invisible to REST-shaped error handling.
+  const graphqlError = (errors: Array<{ type?: string; message: string }>) => {
+    const error = new Error(
+      `Request failed due to following response errors:\n${errors
+        .map((e) => ` - ${e.message}`)
+        .join('\n')}`,
+    );
+    (error as any).errors = errors;
+    return error;
+  };
+
+  beforeEach(() => {
+    (config.retrySleep as jest.Mock).mockReturnValue(1);
+    (config.retryCount as jest.Mock).mockReturnValue(3);
+  });
+
+  test('is selected when UPDATE_METHOD is rebase', () => {
+    const updater = rebaseUpdater();
+
+    expect(updater.strategy).toBeInstanceOf(RebaseUpdateStrategy);
+    expect(updater.strategy.name).toEqual('rebase');
+  });
+
+  test('merge remains the default strategy', () => {
+    const updater = new AutoUpdater(config, emptyEvent);
+
+    expect(updater.strategy).toBeInstanceOf(MergeUpdateStrategy);
+    expect(updater.strategy.name).toEqual('merge');
+  });
+
+  test('rebases using the pull request node ID', async () => {
+    const updater = rebaseUpdater();
+    const rebaseSpy = jest
+      .spyOn(updater.github, 'rebaseBranch')
+      .mockResolvedValue({} as any);
+    const mergeSpy = jest.spyOn(updater.github, 'mergeBranch');
+    const setOutputSpy = jest
+      .spyOn(core, 'setOutput')
+      .mockImplementation(() => {});
+    const infoSpy = jest.spyOn(core, 'info').mockImplementation(() => {});
+
+    const result = await updater.strategy.execute(owner, rebasePull as any);
+
+    expect(result).toBe(true);
+    expect(rebaseSpy).toHaveBeenCalledWith('PR_node_1');
+    expect(mergeSpy).not.toHaveBeenCalled();
+    expect(setOutputSpy).toHaveBeenCalledWith(Output.Conflicted, false);
+    expect(infoSpy).toHaveBeenCalledWith(
+      'Branch update successful via rebase.',
+    );
+  });
+
+  test('fails with a clear message when the pull request has no node ID', async () => {
+    (config.retryCount as jest.Mock).mockReturnValue(0);
+    const updater = rebaseUpdater();
+    const rebaseSpy = jest.spyOn(updater.github, 'rebaseBranch');
+
+    await expect(
+      updater.strategy.execute(owner, mergeTestPull as any),
+    ).rejects.toThrow('Cannot rebase pull request #1, it has no node ID.');
+
+    expect(rebaseSpy).not.toHaveBeenCalled();
+  });
+
+  test('treats a GraphQL conflict error as a merge conflict', async () => {
+    (config.mergeConflictAction as jest.Mock).mockReturnValue('ignore');
+    const updater = rebaseUpdater();
+    const rebaseSpy = jest
+      .spyOn(updater.github, 'rebaseBranch')
+      .mockRejectedValue(
+        graphqlError([
+          {
+            type: 'UNPROCESSABLE',
+            message: 'merge conflict between base and head',
+          },
+        ]),
+      );
+    const setOutputSpy = jest
+      .spyOn(core, 'setOutput')
+      .mockImplementation(() => {});
+    const infoSpy = jest.spyOn(core, 'info').mockImplementation(() => {});
+
+    const result = await updater.strategy.execute(owner, rebasePull as any);
+
+    expect(result).toBe(false);
+    // A conflict must not be retried.
+    expect(rebaseSpy).toHaveBeenCalledTimes(1);
+    expect(setOutputSpy).toHaveBeenCalledWith(Output.Conflicted, true);
+    expect(infoSpy).toHaveBeenCalledWith(
+      'Merge conflict detected, skipping update.',
+    );
+  });
+
+  test('labels a conflicted pull request when configured to', async () => {
+    (config.mergeConflictAction as jest.Mock).mockReturnValue('label');
+    (config.mergeConflictLabel as jest.Mock).mockReturnValue('conflict');
+    (config.pullRequestFilter as jest.Mock).mockReturnValue('all');
+    const updater = rebaseUpdater();
+    jest
+      .spyOn(updater.github, 'rebaseBranch')
+      .mockRejectedValue(
+        graphqlError([
+          { type: 'UNPROCESSABLE', message: 'has conflicts with the base' },
+        ]),
+      );
+    jest
+      .spyOn(updater.github, 'getPullRequest')
+      .mockResolvedValue({ data: { labels: [{ name: 'foo' }] } } as any);
+    const issuesUpdate = jest
+      .spyOn(updater.github, 'updateIssueLabels')
+      .mockResolvedValue({} as any);
+    const issuesComment = jest
+      .spyOn(updater.github, 'createIssueComment')
+      .mockResolvedValue({} as any);
+
+    const result = await updater.strategy.execute(owner, rebasePull as any);
+
+    expect(result).toBe(false);
+    expect(issuesUpdate).toHaveBeenCalledWith(owner, repo, 1, [
+      'foo',
+      'conflict',
+    ]);
+    expect(issuesComment).toHaveBeenCalled();
+  });
+
+  // Regression test: a GraphQL error carries no `status`, so the REST-only
+  // permission check never matched it. A fork permission failure used to burn
+  // every retry and then fail the whole action.
+  test('returns false without retrying on a GraphQL FORBIDDEN error from a fork', async () => {
+    const updater = rebaseUpdater();
+    const rebaseSpy = jest
+      .spyOn(updater.github, 'rebaseBranch')
+      .mockRejectedValue(
+        graphqlError([
+          {
+            type: 'FORBIDDEN',
+            message: 'must have write access to the repository',
+          },
+        ]),
+      );
+    const setOutputSpy = jest
+      .spyOn(core, 'setOutput')
+      .mockImplementation(() => {});
+    const errorSpy = jest.spyOn(core, 'error').mockImplementation(() => {});
+
+    const result = await updater.strategy.execute(
+      'a-different-owner',
+      rebasePull as any,
+    );
+
+    expect(result).toBe(false);
+    expect(rebaseSpy).toHaveBeenCalledTimes(1);
+    expect(setOutputSpy).toHaveBeenCalledWith(Output.Conflicted, false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Fork write access error'),
+    );
+  });
+
+  test('treats a GraphQL UNAUTHORIZED error from a fork the same way', async () => {
+    const updater = rebaseUpdater();
+    const rebaseSpy = jest
+      .spyOn(updater.github, 'rebaseBranch')
+      .mockRejectedValue(
+        graphqlError([{ type: 'UNAUTHORIZED', message: 'not authorised' }]),
+      );
+    jest.spyOn(core, 'setOutput').mockImplementation(() => {});
+    jest.spyOn(core, 'error').mockImplementation(() => {});
+
+    const result = await updater.strategy.execute(
+      'a-different-owner',
+      rebasePull as any,
+    );
+
+    expect(result).toBe(false);
+    expect(rebaseSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('retries a transient GraphQL error and then succeeds', async () => {
+    const updater = rebaseUpdater();
+    const rebaseSpy = jest
+      .spyOn(updater.github, 'rebaseBranch')
+      .mockRejectedValueOnce(
+        graphqlError([{ type: 'INTERNAL', message: 'something went wrong' }]),
+      )
+      .mockResolvedValueOnce({} as any);
+
+    const result = await updater.strategy.execute(owner, rebasePull as any);
+
+    expect(result).toBe(true);
+    expect(rebaseSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('update() dry run reports the rebase strategy without calling it', async () => {
+    (config.dryRun as jest.Mock).mockReturnValue(true);
+    const updater = rebaseUpdater();
+    jest.spyOn(updater.evaluator, 'prNeedsUpdate').mockResolvedValue(true);
+    const rebaseSpy = jest.spyOn(updater.github, 'rebaseBranch');
+    const warningSpy = jest.spyOn(core, 'warning').mockImplementation(() => {});
+
+    const result = await updater.update(owner, <any>validPull);
+
+    expect(result).toEqual(true);
+    expect(rebaseSpy).not.toHaveBeenCalled();
+    expect(warningSpy).toHaveBeenCalledWith(
+      expect.stringContaining('via rebase'),
+    );
   });
 });

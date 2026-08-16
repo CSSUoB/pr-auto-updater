@@ -9,8 +9,9 @@
   "bin": "bin/cli.js",
   "scripts": {
     "build": "ncc build bin/cli.ts --out dist",
-    "lint": "eslint bin src test --ext .ts && prettier --check bin/*.ts src/*.ts test/*.ts",
-    "lint:fix": "eslint --fix bin src test --ext .ts && prettier --write bin/*.ts src/*.ts test/*.ts",
+    "lint": "eslint . && prettier --check .",
+    "lint:fix": "eslint . --fix && prettier --write .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tests.json",
     "test": "jest",
     "test:watch": "jest --watchAll"
   },

@@ -165,3 +165,39 @@ for (const testDef of tests) {
     });
   }
 }
+
+describe('updateMethod', () => {
+  afterEach(() => {
+    delete process.env.UPDATE_METHOD;
+  });
+
+  test("defaults to 'merge' when UPDATE_METHOD is not defined", () => {
+    expect(new ConfigLoader().updateMethod()).toEqual('merge');
+  });
+
+  test.each(['merge', 'rebase'])("accepts '%s'", (method) => {
+    process.env.UPDATE_METHOD = method;
+    expect(new ConfigLoader().updateMethod()).toEqual(method);
+  });
+
+  test.each([
+    ['REBASE', 'rebase'],
+    ['Rebase', 'rebase'],
+    ['  rebase  ', 'rebase'],
+  ])("normalises '%s' to '%s'", (input, expected) => {
+    process.env.UPDATE_METHOD = input;
+    expect(new ConfigLoader().updateMethod()).toEqual(expected);
+  });
+
+  // An unrecognised value previously fell through to a silent merge, which
+  // meant a typo performed the opposite of what was asked for.
+  test.each(['rebse', 'squash', ''])(
+    "throws on the unsupported value '%s'",
+    (method) => {
+      process.env.UPDATE_METHOD = method;
+      expect(() => new ConfigLoader().updateMethod()).toThrow(
+        `Invalid UPDATE_METHOD value '${method}', must be one of 'merge' or 'rebase'.`,
+      );
+    },
+  );
+});

@@ -49,7 +49,18 @@ export class ConfigLoader {
 
   updateMethod(): string {
     // one of 'merge' or 'rebase'.
-    return this.getValue('UPDATE_METHOD', false, 'merge');
+    const method = this.getValue('UPDATE_METHOD', false, 'merge')
+      .toString()
+      .trim()
+      .toLowerCase();
+
+    if (method !== 'merge' && method !== 'rebase') {
+      throw new Error(
+        `Invalid UPDATE_METHOD value '${method}', must be one of 'merge' or 'rebase'.`,
+      );
+    }
+
+    return method;
   }
 
   retryCount(): number {
