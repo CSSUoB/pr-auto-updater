@@ -5,6 +5,7 @@ on:
 jobs:
   pr-auto-update:
     name: Automatic PR Updater
+    if: github.repository == 'CSSUoB/pr-auto-updater' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions: 
       pull-requests: write
