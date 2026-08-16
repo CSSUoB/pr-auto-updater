@@ -47,6 +47,11 @@ export class ConfigLoader {
     return msg;
   }
 
+  updateMethod(): string {
+    // one of 'merge' or 'rebase'.
+    return this.getValue('UPDATE_METHOD', false, 'merge');
+  }
+
   retryCount(): number {
     return parseInt(this.getValue('RETRY_COUNT', false, 5), 10);
   }
