@@ -7,9 +7,10 @@
     "strict": true,
     "esModuleInterop": true,
     "rootDir": ".",
-    "plugins": [
-      { "name": "ts-auto-mock" }
-    ]
+    // Type checking only — the shipped bundle is produced by ncc. Without this
+    // a bare `tsc -p` scatters compiled .js next to the sources.
+    "noEmit": true,
+    "plugins": [{ "name": "ts-auto-mock" }]
   },
   "include": ["src/**/*", "bin/**/*"],
   "exclude": ["**/*.test.ts"]

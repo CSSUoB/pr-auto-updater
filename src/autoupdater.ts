@@ -1,45 +1,48 @@
-import * as github from '@actions/github';
-import { GitHub } from '@actions/github/lib/utils';
 import * as ghCore from '@actions/core';
-import type * as octokit from '@octokit/types';
 import type {
+  WebhookEvent,
   PullRequestEvent,
   PushEvent,
-  WebhookEvent,
   WorkflowRunEvent,
   WorkflowDispatchEvent,
 } from '@octokit/webhooks-types/schema';
 import { ConfigLoader } from './config-loader';
-import { Output } from './Output';
-import { isRequestError } from './helpers/isRequestError';
-
-type PullRequestResponse =
-  octokit.Endpoints['GET /repos/{owner}/{repo}/pulls/{pull_number}']['response'];
-type MergeParameters =
-  octokit.Endpoints['POST /repos/{owner}/{repo}/merges']['parameters'];
-
-type PullRequest =
-  PullRequestResponse['data'] | PullRequestEvent['pull_request'];
-
-type SetOutputFn = typeof ghCore.setOutput;
+import { GitHubService } from './services/GitHubService';
+import { PullRequestEvaluator } from './evaluators/PullRequestEvaluator';
+import {
+  UpdateStrategy,
+  MergeUpdateStrategy,
+  RebaseUpdateStrategy,
+} from './strategies/UpdateStrategy';
+import { errorMessage } from './helpers/errorMessage';
+import type {
+  PullRequest,
+  PullRequestResponse,
+  PullRequestWithHeadRepo,
+} from './types';
 
 export class AutoUpdater {
-  // See https://docs.github.com/en/developers/webhooks-and-events/webhook-events-and-payloads
   eventData: WebhookEvent;
   config: ConfigLoader;
-  octokit: InstanceType<typeof GitHub>;
+  github: GitHubService;
+  evaluator: PullRequestEvaluator;
+  strategy: UpdateStrategy;
 
   constructor(config: ConfigLoader, eventData: WebhookEvent) {
     this.eventData = eventData;
     this.config = config;
-    this.octokit = github.getOctokit(this.config.githubToken());
+    this.github = new GitHubService(this.config.githubToken());
+    this.evaluator = new PullRequestEvaluator(this.config, this.github);
+
+    if (this.config.updateMethod() === 'rebase') {
+      this.strategy = new RebaseUpdateStrategy(this.config, this.github);
+    } else {
+      this.strategy = new MergeUpdateStrategy(this.config, this.github);
+    }
   }
 
   async handlePush(): Promise<number> {
     const { ref, repository } = this.eventData as PushEvent;
-
-    ghCore.info(`Handling push event on ref '${ref}'`);
-
     return await this.pulls(
       ref,
       repository.name,
@@ -49,75 +52,31 @@ export class AutoUpdater {
   }
 
   async handlePullRequest(): Promise<boolean> {
-    const { action, pull_request } = this.eventData as PullRequestEvent;
+    const { pull_request } = this.eventData as PullRequestEvent;
+    if (!pull_request.head.repo) return false;
 
-    ghCore.info(`Handling pull_request event triggered by action '${action}'`);
-
-    if (!pull_request.head.repo) {
-      ghCore.error('Pull request head repo is null, skipping update.');
-      return false;
-    }
-
-    const isUpdated = await this.update(
-      pull_request.head.repo.owner.login,
-      pull_request,
-    );
-    if (isUpdated) {
-      ghCore.info(
-        'Auto update complete, pull request branch was updated with changes from the base branch.',
-      );
-    } else {
-      ghCore.info('Auto update complete, no changes were made.');
-    }
-
-    return isUpdated;
+    return await this.update(pull_request.head.repo.owner.login, pull_request);
   }
 
   async handleSchedule(): Promise<number> {
     const ref = this.config.githubRef();
     const ownerAndRepo = this.config.githubRepository();
-
     const splitRepoName = ownerAndRepo.split('/');
+    if (splitRepoName.length !== 2) return 0;
 
-    if (splitRepoName.length !== 2) {
-      ghCore.error(`Cannot parse GITHUB_REPOSITORY value ${ownerAndRepo}`);
-      return 0;
-    }
-
-    const repoOwner = splitRepoName[0];
-    const repoName = splitRepoName[1];
-
-    ghCore.info(`Handling schedule event on '${ref}'`);
-
-    return await this.pulls(ref, repoName, repoOwner);
+    return await this.pulls(ref, splitRepoName[1], splitRepoName[0]);
   }
 
   async handleWorkflowRun(): Promise<number> {
-    const { workflow_run: workflowRun, repository } = this
-      .eventData as WorkflowRunEvent;
-    const { head_branch: branch, event } = workflowRun;
-
-    if (!['push', 'pull_request'].includes(event)) {
-      ghCore.error(
-        `workflow_run events triggered via ${event} workflows are not supported.`,
-      );
+    const { workflow_run, repository } = this.eventData as WorkflowRunEvent;
+    if (
+      !['push', 'pull_request'].includes(workflow_run.event) ||
+      !workflow_run.head_branch
+    )
       return 0;
-    }
 
-    // This may not be possible given the check above, but here for safety.
-    if (!branch) {
-      ghCore.warning('Event was not on a branch, skipping.');
-      return 0;
-    }
-
-    ghCore.info(
-      `Handling workflow_run event triggered by '${event}' on '${branch}'`,
-    );
-
-    // The `pull_request` event is handled the same way as `push` as we may
-    // get multiple PRs.
     return await this.pulls(
-      `refs/heads/${branch}`,
+      `refs/heads/${workflow_run.head_branch}`,
       repository.name,
       repository.owner.login,
       repository.owner.name,
@@ -126,9 +85,6 @@ export class AutoUpdater {
 
   async handleWorkflowDispatch(): Promise<number> {
     const { ref, repository } = this.eventData as WorkflowDispatchEvent;
-
-    ghCore.info(`Handling workflow_dispatch event on ref '${ref}'`);
-
     return await this.pulls(
       ref,
       repository.name,
@@ -143,27 +99,15 @@ export class AutoUpdater {
     repoOwnerLogin: string,
     repoOwnerName?: string,
   ): Promise<number> {
-    if (!ref.startsWith('refs/heads/')) {
-      ghCore.warning('Push event was not on a branch, skipping.');
-      return 0;
-    }
+    if (!ref.startsWith('refs/heads/')) return 0;
 
     const baseBranch = ref.replace('refs/heads/', '');
-
     const owner = repoOwnerName ?? repoOwnerLogin;
-
-    if (!owner) {
-      ghCore.error('Invalid repository owner provided');
-      return 0;
-    }
-    if (!repoName) {
-      ghCore.error('Invalid repository name provided');
-      return 0;
-    }
+    if (!owner || !repoName) return 0;
 
     let updated = 0;
-    const paginatorOpts = this.octokit.rest.pulls.list.endpoint.merge({
-      owner: owner,
+    const paginatorOpts = this.github.rest.pulls.list.endpoint.merge({
+      owner,
       repo: repoName,
       base: baseBranch,
       state: 'open',
@@ -171,433 +115,55 @@ export class AutoUpdater {
       direction: 'desc',
     });
 
-    let pullsPage: octokit.OctokitResponse<any>;
-    for await (pullsPage of this.octokit.paginate.iterator(paginatorOpts)) {
-      let pull: PullRequestResponse['data'];
-      for (pull of pullsPage.data) {
+    for await (const pullsPage of this.github.paginate.iterator(
+      paginatorOpts,
+    )) {
+      // `paginate.iterator` cannot infer a response type from pre-merged
+      // endpoint options, so it hands back `unknown` page data.
+      const pagePulls = pullsPage.data as PullRequestResponse['data'][];
+
+      for (const pull of pagePulls) {
         ghCore.startGroup(`PR-${pull.number}`);
         const isUpdated = await this.update(owner, pull);
         ghCore.endGroup();
-
-        if (isUpdated) {
-          updated++;
-        }
+        if (isUpdated) updated++;
       }
     }
-
-    ghCore.info(
-      `Auto update complete, ${updated} pull request(s) that point to base branch '${baseBranch}' were updated.`,
-    );
-
     return updated;
   }
 
   async update(sourceEventOwner: string, pull: PullRequest): Promise<boolean> {
-    const { ref } = pull.head;
     ghCore.info(`Evaluating pull request #${pull.number}...`);
 
-    const prNeedsUpdate = await this.prNeedsUpdate(pull);
-    if (!prNeedsUpdate) {
-      return false;
-    }
+    const prNeedsUpdate = await this.evaluator.prNeedsUpdate(pull);
+    if (!prNeedsUpdate) return false;
 
-    const baseRef = pull.base.ref;
-    const headRef = pull.head.ref;
     ghCore.info(
-      `Updating branch '${ref}' on pull request #${pull.number} with changes from ref '${baseRef}'.`,
+      `Updating branch '${pull.head.ref}' on pull request #${pull.number} with changes from ref '${pull.base.ref}'.`,
     );
 
     if (this.config.dryRun()) {
       ghCore.warning(
-        `Would have merged ref '${headRef}' into ref '${baseRef}' but DRY_RUN was enabled.`,
+        `Would have updated branch '${pull.head.ref}' with changes from ref '${pull.base.ref}' via ${this.strategy.name} but DRY_RUN was enabled.`,
       );
       return true;
     }
 
-    if (pull.head.repo === null) {
-      ghCore.error(
-        `Could not determine repository for this pull request, skipping and continuing with remaining PRs`,
-      );
-      return false;
-    }
-
-    const mergeMsg = this.config.mergeMsg();
-    const mergeOpts: MergeParameters = {
-      owner: pull.head.repo.owner.login,
-      repo: pull.head.repo.name,
-      // We want to merge the base branch into this one.
-      base: headRef,
-      head: baseRef,
-    };
-
-    if (typeof mergeMsg === 'string' && mergeMsg.length > 0) {
-      mergeOpts.commit_message = mergeMsg;
-    }
-
-    try {
-      return await this.merge(sourceEventOwner, pull.number, mergeOpts);
-    } catch (e: unknown) {
-      if (e instanceof Error) {
-        ghCore.error(
-          `Caught error running merge, skipping and continuing with remaining PRs`,
-        );
-        ghCore.setFailed(e);
-      }
-      return false;
-    }
-  }
-
-  async prNeedsUpdate(pull: PullRequest): Promise<boolean> {
-    if (pull.merged === true) {
-      ghCore.warning('Skipping pull request, already merged.');
-      return false;
-    }
-    if (pull.state !== 'open') {
-      ghCore.warning(
-        `Skipping pull request, no longer open (current state: ${pull.state}).`,
-      );
-      return false;
-    }
     if (!pull.head.repo) {
-      ghCore.warning(
-        `Skipping pull request, fork appears to have been deleted.`,
-      );
-      return false;
-    }
-
-    // If base repo information is missing, avoid throwing when checking for forks.
-    // Only treat as a fork if both head and base repo full_name values exist
-    // and differ.
-    if (
-      pull.base?.repo?.full_name &&
-      pull.head.repo.full_name !== pull.base.repo.full_name
-    ) {
-      ghCore.info('Pull request is from a fork, skipping...');
+      ghCore.error(`Could not determine repository for this pull request.`);
       return false;
     }
 
     try {
-      const { data: comparison } =
-        await this.octokit.rest.repos.compareCommitsWithBasehead({
-          owner: pull.head.repo.owner.login,
-          repo: pull.head.repo.name,
-          // This base->head, head->base logic is intentional, we want
-          // to see what would happen if we merged the base into head not
-          // vice-versa. This parameter expects the format {base}...{head}.
-          basehead: `${pull.head.label}...${pull.base.label}`,
-        });
-
-      if (comparison.behind_by === 0) {
-        ghCore.info('Skipping pull request, up-to-date with base branch.');
-        return false;
-      }
+      // Safe to narrow: the check above established that `head.repo` exists.
+      return await this.strategy.execute(
+        sourceEventOwner,
+        pull as PullRequestWithHeadRepo,
+      );
     } catch (e: unknown) {
-      if (e instanceof Error) {
-        ghCore.error(
-          `Caught error trying to compare base with head: ${e.message}`,
-        );
-      }
+      ghCore.error(`Caught error running update: ${errorMessage(e)}`);
+      ghCore.setFailed(e instanceof Error ? e : String(e));
       return false;
     }
-
-    // First check if this PR has an excluded label on it and skip further
-    // processing if so.
-    const excludedLabels = this.config.excludedLabels();
-    if (excludedLabels.length > 0) {
-      for (const label of pull.labels) {
-        if (label.name === undefined) {
-          ghCore.debug(`Label name is undefined, continuing.`);
-          continue;
-        }
-        if (excludedLabels.includes(label.name)) {
-          ghCore.info(
-            `Pull request has excluded label '${label.name}', skipping update.`,
-          );
-          return false;
-        }
-      }
-    }
-
-    const readyStateFilter = this.config.pullRequestReadyState();
-    if (readyStateFilter !== 'all') {
-      ghCore.info('Checking PR ready state');
-
-      if (readyStateFilter === 'draft' && !pull.draft) {
-        ghCore.info(
-          'PR_READY_STATE=draft and pull request is not draft, skipping update.',
-        );
-        return false;
-      }
-
-      if (readyStateFilter === 'ready_for_review' && pull.draft) {
-        ghCore.info(
-          'PR_READY_STATE=ready_for_review and pull request is draft, skipping update.',
-        );
-        return false;
-      }
-    }
-
-    const prFilter = this.config.pullRequestFilter();
-
-    ghCore.info(
-      `PR_FILTER=${prFilter}, checking if this PR's branch needs to be updated.`,
-    );
-
-    // If PR_FILTER=labelled, check that this PR has _any_ of the labels
-    // specified in that configuration option.
-    if (prFilter === 'labelled') {
-      const labels = this.config.pullRequestLabels();
-      if (labels.length === 0) {
-        ghCore.warning(
-          'Skipping pull request, no labels were defined (env var PR_LABELS is empty or not defined).',
-        );
-        return false;
-      }
-      ghCore.info(
-        `Checking if this PR has a label in our list (${labels.join(', ')}).`,
-      );
-
-      if (pull.labels.length === 0) {
-        ghCore.info('Skipping pull request, it has no labels.');
-        return false;
-      }
-
-      for (const label of pull.labels) {
-        if (label.name === undefined) {
-          ghCore.debug(`Label name is undefined, continuing.`);
-          continue;
-        }
-
-        if (labels.includes(label.name)) {
-          ghCore.info(
-            `Pull request has label '${label.name}' and PR branch is behind base branch.`,
-          );
-          return true;
-        }
-      }
-
-      ghCore.info(
-        'Pull request does not match any of the defined labels, skipping update.',
-      );
-      return false;
-    }
-
-    if (prFilter === 'protected') {
-      ghCore.info('Checking if this PR is against a protected branch.');
-      const { data: branch } = await this.octokit.rest.repos.getBranch({
-        owner: pull.head.repo.owner.login,
-        repo: pull.head.repo.name,
-        branch: pull.base.ref,
-      });
-
-      if (branch.protected) {
-        ghCore.info(
-          'Pull request is against a protected branch and is behind base branch.',
-        );
-        return true;
-      }
-
-      ghCore.info(
-        'Pull request is not against a protected branch, skipping update.',
-      );
-      return false;
-    }
-
-    if (prFilter === 'auto_merge') {
-      ghCore.info('Checking if this PR has auto_merge enabled.');
-
-      if (pull.auto_merge === null) {
-        ghCore.info(
-          'Pull request does not have auto_merge enabled, skipping update.',
-        );
-
-        return false;
-      }
-
-      ghCore.info(
-        'Pull request has auto_merge enabled and is behind base branch.',
-      );
-
-      return true;
-    }
-
-    ghCore.info('All checks pass and PR branch is behind base branch.');
-    return true;
-  }
-
-  async merge(
-    sourceEventOwner: string,
-    prNumber: number,
-    mergeOpts: MergeParameters,
-    // Allows for mocking in tests.
-    setOutputFn: SetOutputFn = ghCore.setOutput,
-  ): Promise<boolean> {
-    const sleep = (timeMs: number) => {
-      return new Promise((resolve) => {
-        setTimeout(resolve, timeMs);
-      });
-    };
-
-    const doMerge = async () => {
-      const mergeResp: octokit.OctokitResponse<any> =
-        await this.octokit.rest.repos.merge(mergeOpts);
-
-      // See https://developer.github.com/v3/repos/merging/#perform-a-merge
-      const { status } = mergeResp;
-      if (status === 200 || status === 201) {
-        ghCore.info(
-          `Branch update successful, new branch HEAD: ${mergeResp.data.sha}.`,
-        );
-      } else if (status === 204) {
-        ghCore.info(
-          'Branch update not required, branch is already up-to-date.',
-        );
-      }
-
-      return true;
-    };
-
-    const retryCount = this.config.retryCount();
-    const retrySleep = this.config.retrySleep();
-    const mergeConflictAction = this.config.mergeConflictAction();
-    const mergeConflictLabel = this.config.mergeConflictLabel();
-
-    let retries = 0;
-
-    while (true) {
-      try {
-        ghCore.info('Attempting branch update...');
-
-        await doMerge();
-
-        setOutputFn(Output.Conflicted, false);
-
-        break;
-      } catch (e: unknown) {
-        if (e instanceof Error) {
-          if (
-            isRequestError(e) &&
-            e.message.includes('Parameter token or opts.auth is required')
-          ) {
-            ghCore.error(
-              `Could not update pull request #${prNumber} due to an authorisation error. Error was: ${e.message}. Please confirm you are using the correct token and it has the correct authorisation scopes.`,
-            );
-
-            setOutputFn(Output.Conflicted, false);
-
-            return false;
-          }
-          if (
-            isRequestError(e) &&
-            e.status === 403 &&
-            sourceEventOwner !== mergeOpts.owner
-          ) {
-            ghCore.error(
-              `Could not update pull request #${prNumber} due to an authorisation error. This is probably because this pull request is from a fork and the current token does not have write access to the forked repository. Error was: ${e.message}`,
-            );
-
-            setOutputFn(Output.Conflicted, false);
-
-            return false;
-          }
-
-          if (e.message.includes('Merge conflict')) {
-            setOutputFn(Output.Conflicted, true);
-
-            if (mergeConflictAction === 'ignore') {
-              // Ignore conflicts if configured to do so.
-              ghCore.info('Merge conflict detected, skipping update.');
-              return false;
-            } else if (mergeConflictAction === 'label') {
-              ghCore.info(
-                'Merge conflict detected, labelling with label: ' +
-                  mergeConflictLabel,
-              );
-              // Fetch current labels on the PR
-              const { data: prData } = await this.octokit.rest.pulls.get({
-                owner: mergeOpts.owner as string,
-                repo: mergeOpts.repo as string,
-                pull_number: prNumber,
-              });
-              const currentLabels = prData.labels
-                .map((l: any) => l.name)
-                .filter(Boolean);
-              ghCore.info(
-                `Current labels on PR #${prNumber}: ${currentLabels.join(', ')}`,
-              );
-              // If the label is not already present, add it, and remove the filter label if it exists.
-              if (!currentLabels.includes(mergeConflictLabel)) {
-                const labelSet = new Set([
-                  ...currentLabels,
-                  mergeConflictLabel,
-                ]);
-
-                if (this.config.pullRequestFilter() === 'labelled') {
-                  this.config
-                    .pullRequestLabels()
-                    .forEach((label) => labelSet.delete(label));
-                }
-
-                const newLabels = Array.from(labelSet);
-
-                ghCore.info(
-                  `Adding merge conflict label '${mergeConflictLabel}' to PR #${prNumber}. New labels: ${newLabels.join(', ')}`,
-                );
-
-                await this.octokit.rest.issues.update({
-                  owner: mergeOpts.owner as string,
-                  repo: mergeOpts.repo as string,
-                  issue_number: prNumber,
-                  labels: newLabels,
-                });
-
-                ghCore.info(
-                  `Attempting to add comment to PR #${prNumber} about merge conflict.`,
-                );
-
-                await this.octokit.rest.issues.createComment({
-                  owner: mergeOpts.owner as string,
-                  repo: mergeOpts.repo as string,
-                  issue_number: prNumber,
-                  body: `This pull request has a merge conflict with the base branch! Please resolve the conflict manually, remove the conflict label and re-add the filter label (if applicable).`,
-                });
-                ghCore.info(
-                  `Added merge conflict label '${mergeConflictLabel}' to PR #${prNumber}.`,
-                );
-              } else {
-                ghCore.info(
-                  `Merge conflict label '${mergeConflictLabel}' already present on PR #${prNumber}.`,
-                );
-                ghCore.info(
-                  `Labels on PR #${prNumber} after merge conflict: ${currentLabels.join(', ')}.`,
-                );
-              }
-              return false;
-            } else {
-              // Else, throw an error so we don't continue retrying.
-              ghCore.error('Merge conflict error trying to update branch');
-              throw e;
-            }
-          }
-
-          ghCore.error(`Caught error trying to update branch: ${e.message}`);
-        }
-
-        if (retries < retryCount) {
-          ghCore.info(
-            `Branch update failed, will retry in ${retrySleep}ms, retry #${retries} of ${retryCount}.`,
-          );
-
-          retries++;
-          await sleep(retrySleep);
-        } else {
-          setOutputFn(Output.Conflicted, false);
-
-          throw e;
-        }
-      }
-    }
-
-    return true;
   }
 }

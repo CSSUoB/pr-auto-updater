@@ -11,7 +11,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 25.x
-      
+
       - name: Enable corepack
         run: corepack enable
 
@@ -20,3 +20,6 @@ jobs:
 
       - name: Lint files
         run: yarn run lint
+
+      - name: Type check
+        run: yarn run typecheck
