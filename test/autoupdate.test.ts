@@ -407,6 +407,9 @@ describe('test `prNeedsUpdate`', () => {
 
       expect(readyPullNeedsUpdate).toEqual(false);
       expect(draftPullNeedsUpdate).toEqual(true);
+
+      expect(readyScope.isDone()).toEqual(true);
+      expect(draftScope.isDone()).toEqual(true);
     });
   });
 });
