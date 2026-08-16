@@ -43,7 +43,7 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
         }
 
         if (e.message?.includes('Merge conflict') || e.message?.includes('conflict')) {
-          await this.handleConflict(pull);
+          await this.handleConflict(pull, e);
           return false;
         }
 
@@ -62,7 +62,7 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
     return true;
   }
 
-  private async handleConflict(pull: any) {
+  private async handleConflict(pull: any, error: Error) {
     ghCore.setOutput(Output.Conflicted, true);
     const action = this.config.mergeConflictAction();
     const label = this.config.mergeConflictLabel();
@@ -70,17 +70,18 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
     if (action === 'ignore') {
       ghCore.info('Merge conflict detected, skipping update.');
       return;
-    } 
-    
+    }
+
     if (action === 'label') {
       const owner = pull.head.repo.owner.login;
       const repo = pull.head.repo.name;
-      
+
       const { data: prData } = await this.github.getPullRequest(owner, repo, pull.number);
       const currentLabels = prData.labels.map((l: any) => l.name).filter(Boolean);
 
       if (!currentLabels.includes(label)) {
         const labelSet = new Set([...currentLabels, label]);
+
         if (this.config.pullRequestFilter() === 'labelled') {
           this.config.pullRequestLabels().forEach((l: string) => labelSet.delete(l));
         }
@@ -88,8 +89,13 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
         const newLabels = Array.from(labelSet) as string[];
         await this.github.updateIssueLabels(owner, repo, pull.number, newLabels);
         await this.github.createIssueComment(owner, repo, pull.number, `This pull request has a merge conflict with the base branch! Please resolve the conflict manually.`);
-      }
     }
+      return; // Exit here if action was label
+    }
+
+    // If the action is 'fail', log the error and throw it
+    ghCore.error('Merge conflict error trying to update branch');
+    throw error;
   }
 }
 
