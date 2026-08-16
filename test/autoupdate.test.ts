@@ -8,13 +8,7 @@ import nock from 'nock';
 import config from '../src/config-loader';
 import { AutoUpdater } from '../src/autoupdater';
 import type { Endpoints } from '@octokit/types';
-import type {
-  PullRequestEvent,
-  PushEvent,
-  WebhookEvent,
-  WorkflowDispatchEvent,
-  WorkflowRunEvent,
-} from '@octokit/webhooks-types/schema';
+import type { PushEvent, WebhookEvent } from '@octokit/webhooks-types/schema';
 import * as core from '@actions/core';
 import { Output } from '../src/Output';
 import * as isRequestErrorModule from '../src/helpers/isRequestError';
@@ -42,39 +36,6 @@ const dummyPushEvent: PushEvent = {
   repository: {
     owner: {
       login: owner,
-    },
-    name: repo,
-  },
-} as any;
-const dummyWorkflowDispatchEvent: WorkflowDispatchEvent = {
-  ref: `refs/heads/${branch}`,
-  repository: {
-    owner: {
-      login: owner,
-    },
-    name: repo,
-  },
-} as any;
-const dummyWorkflowRunPushEvent: WorkflowRunEvent = {
-  workflow_run: {
-    event: 'push',
-    head_branch: branch,
-  },
-  repository: {
-    owner: {
-      name: owner,
-    },
-    name: repo,
-  },
-} as any;
-const dummyWorkflowRunPullRequestEvent: WorkflowRunEvent = {
-  workflow_run: {
-    event: 'pull_request',
-    head_branch: branch,
-  },
-  repository: {
-    owner: {
-      name: owner,
     },
     name: repo,
   },
