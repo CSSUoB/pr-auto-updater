@@ -9,8 +9,8 @@
   "bin": "bin/cli.js",
   "scripts": {
     "build": "ncc build bin/cli.ts --out dist",
-    "lint": "eslint . && prettier --list-different bin/*.ts src/*.ts test/*.ts",
-    "lint:fix": "eslint --fix .",
+    "lint": "eslint bin src test --ext .ts && prettier --check bin/*.ts src/*.ts test/*.ts",
+    "lint:fix": "eslint --fix bin src test --ext .ts && prettier --write bin/*.ts src/*.ts test/*.ts",
     "test": "jest",
     "test:watch": "jest --watchAll"
   },
@@ -20,31 +20,34 @@
     "@octokit/types": "^16.0.0",
     "@octokit/webhooks": "^14.1.3",
     "@octokit/webhooks-types": "^7.6.1",
-    "@types/node": "^24.10.0",
-    "@vercel/ncc": "^0.38.4",
-    "glob": "^11.0.3",
-    "ts-node": "^10.9.2"
+    "@types/node": "^26.1.2",
+    "glob": "^13.0.6"
   },
   "devDependencies": {
-    "@types/jest": "30.0.0",
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "@babel/preset-typescript": "^8.0.1",
+    "@eslint/eslintrc": "^3.3.6",
+    "@eslint/js": "^10.0.1",
+    "@types/jest": "^30.0.0",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.3",
-    "eslint": "^9.39.1",
+    "@vercel/ncc": "^0.44.1",
+    "babel-jest": "^30.4.1",
+    "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jest": "^29.0.1",
     "eslint-plugin-prettier": "^5.5.4",
-    "jest": "^30.2.0",
-    "jest-junit": "^16.0.0",
+    "globals": "^17.9.0",
+    "jest": "^30.4.2",
+    "jest-junit": "^17.0.0",
     "jest-ts-auto-mock": "2",
     "nock": "15.0.0",
     "prettier": "^3.6.2",
     "ts-auto-mock": "3",
-    "ts-jest": "^29.4.4",
+    "ts-node": "^10.9.2",
     "ttypescript": "^1.5.15",
-    "typescript": "^5.9.3"
-  },
-  "resolutions": {
-    "glob": "^9.0.0"
+    "typescript": "5.9.3"
   }
 }
