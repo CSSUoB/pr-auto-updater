@@ -3,7 +3,10 @@ import { ConfigLoader } from '../config-loader';
 import { GitHubService } from '../services/GitHubService';
 
 export class PullRequestEvaluator {
-  constructor(private config: ConfigLoader, private github: GitHubService) {}
+  constructor(
+    private config: ConfigLoader,
+    private github: GitHubService,
+  ) {}
 
   async prNeedsUpdate(pull: any): Promise<boolean> {
     if (pull.merged === true) {
@@ -11,15 +14,22 @@ export class PullRequestEvaluator {
       return false;
     }
     if (pull.state !== 'open') {
-      ghCore.warning(`Skipping pull request, no longer open (current state: ${pull.state}).`);
+      ghCore.warning(
+        `Skipping pull request, no longer open (current state: ${pull.state}).`,
+      );
       return false;
     }
     if (!pull.head.repo) {
-      ghCore.warning(`Skipping pull request, fork appears to have been deleted.`);
+      ghCore.warning(
+        `Skipping pull request, fork appears to have been deleted.`,
+      );
       return false;
     }
 
-    if (pull.base?.repo?.full_name && pull.head.repo.full_name !== pull.base.repo.full_name) {
+    if (
+      pull.base?.repo?.full_name &&
+      pull.head.repo.full_name !== pull.base.repo.full_name
+    ) {
       ghCore.info('Pull request is from a fork, skipping...');
       return false;
     }
@@ -28,7 +38,7 @@ export class PullRequestEvaluator {
       const { data: comparison } = await this.github.compareCommits(
         pull.head.repo.owner.login,
         pull.head.repo.name,
-        `${pull.head.label}...${pull.base.label}`
+        `${pull.head.label}...${pull.base.label}`,
       );
 
       if (comparison.behind_by === 0) {
@@ -36,7 +46,9 @@ export class PullRequestEvaluator {
         return false;
       }
     } catch (e: any) {
-      ghCore.error(`Caught error trying to compare base with head: ${e.message}`);
+      ghCore.error(
+        `Caught error trying to compare base with head: ${e.message}`,
+      );
       return false;
     }
 
@@ -44,7 +56,9 @@ export class PullRequestEvaluator {
     if (excludedLabels.length > 0) {
       for (const label of pull.labels) {
         if (label.name && excludedLabels.includes(label.name)) {
-          ghCore.info(`Pull request has excluded label '${label.name}', skipping update.`);
+          ghCore.info(
+            `Pull request has excluded label '${label.name}', skipping update.`,
+          );
           return false;
         }
       }
@@ -53,11 +67,15 @@ export class PullRequestEvaluator {
     const readyStateFilter = this.config.pullRequestReadyState();
     if (readyStateFilter !== 'all') {
       if (readyStateFilter === 'draft' && !pull.draft) {
-        ghCore.info('PR_READY_STATE=draft and pull request is not draft, skipping.');
+        ghCore.info(
+          'PR_READY_STATE=draft and pull request is not draft, skipping.',
+        );
         return false;
       }
       if (readyStateFilter === 'ready_for_review' && pull.draft) {
-        ghCore.info('PR_READY_STATE=ready_for_review and pull request is draft, skipping.');
+        ghCore.info(
+          'PR_READY_STATE=ready_for_review and pull request is draft, skipping.',
+        );
         return false;
       }
     }
@@ -67,7 +85,7 @@ export class PullRequestEvaluator {
     if (prFilter === 'labelled') {
       const labels = this.config.pullRequestLabels();
       if (labels.length === 0) return false;
-      
+
       for (const label of pull.labels) {
         if (label.name && labels.includes(label.name)) {
           return true;
@@ -80,7 +98,7 @@ export class PullRequestEvaluator {
       const { data: branch } = await this.github.getBranch(
         pull.head.repo.owner.login,
         pull.head.repo.name,
-        pull.base.ref
+        pull.base.ref,
       );
       return branch.protected;
     }

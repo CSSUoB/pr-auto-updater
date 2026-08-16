@@ -19,7 +19,11 @@ export class GitHubService {
   }
 
   async compareCommits(owner: string, repo: string, basehead: string) {
-    return this.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead });
+    return this.rest.repos.compareCommitsWithBasehead({
+      owner,
+      repo,
+      basehead,
+    });
   }
 
   async getBranch(owner: string, repo: string, branch: string) {
@@ -30,12 +34,32 @@ export class GitHubService {
     return this.rest.pulls.get({ owner, repo, pull_number: pullNumber });
   }
 
-  async updateIssueLabels(owner: string, repo: string, issueNumber: number, labels: string[]) {
-    return this.rest.issues.update({ owner, repo, issue_number: issueNumber, labels });
+  async updateIssueLabels(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    labels: string[],
+  ) {
+    return this.rest.issues.update({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      labels,
+    });
   }
 
-  async createIssueComment(owner: string, repo: string, issueNumber: number, body: string) {
-    return this.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+  async createIssueComment(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+    body: string,
+  ) {
+    return this.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      body,
+    });
   }
 
   async mergeBranch(mergeOpts: MergeParameters) {

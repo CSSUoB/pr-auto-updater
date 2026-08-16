@@ -1,9 +1,19 @@
 import * as ghCore from '@actions/core';
-import type { WebhookEvent, PullRequestEvent, PushEvent, WorkflowRunEvent, WorkflowDispatchEvent } from '@octokit/webhooks-types/schema';
+import type {
+  WebhookEvent,
+  PullRequestEvent,
+  PushEvent,
+  WorkflowRunEvent,
+  WorkflowDispatchEvent,
+} from '@octokit/webhooks-types/schema';
 import { ConfigLoader } from './config-loader';
 import { GitHubService } from './services/GitHubService';
 import { PullRequestEvaluator } from './evaluators/PullRequestEvaluator';
-import { UpdateStrategy, MergeUpdateStrategy, RebaseUpdateStrategy } from './strategies/UpdateStrategy';
+import {
+  UpdateStrategy,
+  MergeUpdateStrategy,
+  RebaseUpdateStrategy,
+} from './strategies/UpdateStrategy';
 
 export class AutoUpdater {
   eventData: WebhookEvent;
@@ -27,7 +37,12 @@ export class AutoUpdater {
 
   async handlePush(): Promise<number> {
     const { ref, repository } = this.eventData as PushEvent;
-    return await this.pulls(ref, repository.name, repository.owner.login, repository.owner.name);
+    return await this.pulls(
+      ref,
+      repository.name,
+      repository.owner.login,
+      repository.owner.name,
+    );
   }
 
   async handlePullRequest(): Promise<boolean> {
@@ -48,29 +63,55 @@ export class AutoUpdater {
 
   async handleWorkflowRun(): Promise<number> {
     const { workflow_run, repository } = this.eventData as WorkflowRunEvent;
-    if (!['push', 'pull_request'].includes(workflow_run.event) || !workflow_run.head_branch) return 0;
+    if (
+      !['push', 'pull_request'].includes(workflow_run.event) ||
+      !workflow_run.head_branch
+    )
+      return 0;
 
-    return await this.pulls(`refs/heads/${workflow_run.head_branch}`, repository.name, repository.owner.login, repository.owner.name);
+    return await this.pulls(
+      `refs/heads/${workflow_run.head_branch}`,
+      repository.name,
+      repository.owner.login,
+      repository.owner.name,
+    );
   }
 
   async handleWorkflowDispatch(): Promise<number> {
     const { ref, repository } = this.eventData as WorkflowDispatchEvent;
-    return await this.pulls(ref, repository.name, repository.owner.login, repository.owner.name);
+    return await this.pulls(
+      ref,
+      repository.name,
+      repository.owner.login,
+      repository.owner.name,
+    );
   }
 
-  async pulls(ref: string, repoName: string, repoOwnerLogin: string, repoOwnerName?: string): Promise<number> {
+  async pulls(
+    ref: string,
+    repoName: string,
+    repoOwnerLogin: string,
+    repoOwnerName?: string,
+  ): Promise<number> {
     if (!ref.startsWith('refs/heads/')) return 0;
-    
+
     const baseBranch = ref.replace('refs/heads/', '');
     const owner = repoOwnerName ?? repoOwnerLogin;
     if (!owner || !repoName) return 0;
 
     let updated = 0;
     const paginatorOpts = this.github.rest.pulls.list.endpoint.merge({
-      owner, repo: repoName, base: baseBranch, state: 'open', sort: 'updated', direction: 'desc',
+      owner,
+      repo: repoName,
+      base: baseBranch,
+      state: 'open',
+      sort: 'updated',
+      direction: 'desc',
     });
 
-    for await (const pullsPage of this.github.paginate.iterator(paginatorOpts)) {
+    for await (const pullsPage of this.github.paginate.iterator(
+      paginatorOpts,
+    )) {
       for (const pull of pullsPage.data) {
         ghCore.startGroup(`PR-${pull.number}`);
         const isUpdated = await this.update(owner, pull);
@@ -87,10 +128,14 @@ export class AutoUpdater {
     const prNeedsUpdate = await this.evaluator.prNeedsUpdate(pull);
     if (!prNeedsUpdate) return false;
 
-    ghCore.info(`Updating branch '${pull.head.ref}' on pull request #${pull.number} with changes from ref '${pull.base.ref}'.`);
+    ghCore.info(
+      `Updating branch '${pull.head.ref}' on pull request #${pull.number} with changes from ref '${pull.base.ref}'.`,
+    );
 
     if (this.config.dryRun()) {
-      ghCore.warning(`Would have merged ref '${pull.head.ref}' into ref '${pull.base.ref}' but DRY_RUN was enabled.`);
+      ghCore.warning(
+        `Would have merged ref '${pull.head.ref}' into ref '${pull.base.ref}' but DRY_RUN was enabled.`,
+      );
       return true;
     }
 

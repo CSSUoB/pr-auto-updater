@@ -9,7 +9,10 @@ export interface UpdateStrategy {
 }
 
 abstract class BaseUpdateStrategy implements UpdateStrategy {
-  constructor(protected config: ConfigLoader, protected github: GitHubService) {}
+  constructor(
+    protected config: ConfigLoader,
+    protected github: GitHubService,
+  ) {}
 
   abstract performUpdate(pull: any): Promise<void>;
 
@@ -18,7 +21,8 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
     const retrySleep = this.config.retrySleep();
     const mergeOptsOwner = pull.head.repo.owner.login;
 
-    const sleep = (timeMs: number) => new Promise((resolve) => setTimeout(resolve, timeMs));
+    const sleep = (timeMs: number) =>
+      new Promise((resolve) => setTimeout(resolve, timeMs));
 
     let retries = 0;
 
@@ -42,7 +46,10 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
           }
         }
 
-        if (e.message?.includes('Merge conflict') || e.message?.includes('conflict')) {
+        if (
+          e.message?.includes('Merge conflict') ||
+          e.message?.includes('conflict')
+        ) {
           await this.handleConflict(pull, e);
           return false;
         }
@@ -76,20 +83,38 @@ abstract class BaseUpdateStrategy implements UpdateStrategy {
       const owner = pull.head.repo.owner.login;
       const repo = pull.head.repo.name;
 
-      const { data: prData } = await this.github.getPullRequest(owner, repo, pull.number);
-      const currentLabels = prData.labels.map((l: any) => l.name).filter(Boolean);
+      const { data: prData } = await this.github.getPullRequest(
+        owner,
+        repo,
+        pull.number,
+      );
+      const currentLabels = prData.labels
+        .map((l: any) => l.name)
+        .filter(Boolean);
 
       if (!currentLabels.includes(label)) {
         const labelSet = new Set([...currentLabels, label]);
 
         if (this.config.pullRequestFilter() === 'labelled') {
-          this.config.pullRequestLabels().forEach((l: string) => labelSet.delete(l));
+          this.config
+            .pullRequestLabels()
+            .forEach((l: string) => labelSet.delete(l));
         }
 
         const newLabels = Array.from(labelSet) as string[];
-        await this.github.updateIssueLabels(owner, repo, pull.number, newLabels);
-        await this.github.createIssueComment(owner, repo, pull.number, `This pull request has a merge conflict with the base branch! Please resolve the conflict manually.`);
-    }
+        await this.github.updateIssueLabels(
+          owner,
+          repo,
+          pull.number,
+          newLabels,
+        );
+        await this.github.createIssueComment(
+          owner,
+          repo,
+          pull.number,
+          `This pull request has a merge conflict with the base branch! Please resolve the conflict manually.`,
+        );
+      }
       return; // Exit here if action was label
     }
 
