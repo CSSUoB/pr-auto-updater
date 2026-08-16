@@ -472,6 +472,7 @@ describe('test `handleSchedule`', () => {
     const updated = await updater.handleSchedule();
     expect(updated).toEqual(expectedPulls);
     expect(scope.isDone()).toEqual(true);
+    expect(updateSpy).toHaveBeenCalled();
   });
 });
 
@@ -484,6 +485,7 @@ describe('test `update`', () => {
     const needsUpdate = await updater.update(owner, <any>validPull);
     expect(needsUpdate).toEqual(false);
     expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy).toHaveBeenCalled();
   });
 
   test('dry run mode', async () => {
@@ -565,6 +567,7 @@ describe('MergeUpdateStrategy conflict and retry logic', () => {
     expect(infoSpy).toHaveBeenCalledWith(
       'Branch update not required, branch is already up-to-date.',
     );
+    expect(mergeMock).toHaveBeenCalled();
     infoSpy.mockRestore();
   });
 
