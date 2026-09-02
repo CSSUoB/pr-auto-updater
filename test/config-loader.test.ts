@@ -1,3 +1,5 @@
+import { afterEach, describe, expect, test } from 'vitest';
+
 import { ConfigLoader } from '../src/config-loader';
 
 const tests = [
@@ -128,7 +130,7 @@ for (const testDef of tests) {
         break;
 
       default:
-        fail(
+        throw new Error(
           `Unknown config test '${testDef.type}' for function '${testDef.name}'`,
         );
     }

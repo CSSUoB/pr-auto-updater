@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest';
+
 import { isRequestError } from '../../src/helpers/isRequestError';
 
 describe('isRequestError', () => {

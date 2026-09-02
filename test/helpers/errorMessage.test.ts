@@ -1,3 +1,5 @@
+import { describe, expect, test } from 'vitest';
+
 import { errorMessage } from '../../src/helpers/errorMessage';
 
 describe('errorMessage', () => {

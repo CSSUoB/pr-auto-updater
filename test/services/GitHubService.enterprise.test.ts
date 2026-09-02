@@ -1,24 +1,27 @@
+import nock from 'nock';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
+
+import type { GitHubService as GitHubServiceClass } from '../../src/services/GitHubService';
+
 // `@actions/github` resolves the API base URL once, when the module is first
-// loaded, so GITHUB_API_URL has to be set before anything imports it. `import`
-// statements are hoisted above this assignment, so the modules under test are
-// pulled in with `require` instead. Jest gives each test file its own module
-// registry, which is why this regression test lives in a file of its own.
+// loaded, so GITHUB_API_URL has to be set before anything imports it. Static
+// `import` statements are hoisted above this assignment, so the module under
+// test is pulled in with a dynamic `import()` in `beforeAll` instead. Vitest
+// gives each test file its own module registry, which is why this regression
+// test lives in a file of its own.
 process.env.GITHUB_API_URL = 'https://github.example.com/api/v3';
 
 if ('GITHUB_TOKEN' in process.env) {
   delete process.env.GITHUB_TOKEN;
 }
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const nock: typeof import('nock') = require('nock');
-const {
-  GitHubService,
-}: typeof import('../../src/services/GitHubService') = require('../../src/services/GitHubService');
-/* eslint-enable @typescript-eslint/no-require-imports */
-
 const token = 'test-token';
 
-beforeAll(() => {
+let GitHubService: typeof GitHubServiceClass;
+
+beforeAll(async () => {
+  ({ GitHubService } = await import('../../src/services/GitHubService'));
+
   // Fail loudly rather than reaching the real API if an expectation is wrong.
   nock.disableNetConnect();
 });

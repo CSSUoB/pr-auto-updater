@@ -1,3 +1,5 @@
+import { describe, expect, test } from 'vitest';
+
 import { isGraphqlResponseError } from '../../src/helpers/isGraphqlResponseError';
 import { isRequestError } from '../../src/helpers/isRequestError';
 
