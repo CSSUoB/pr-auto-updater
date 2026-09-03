@@ -13,6 +13,7 @@ node_modules/
 /events
 bin/local.js
 /coverage
+/junit.xml
 
 dist
 

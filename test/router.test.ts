@@ -1,13 +1,15 @@
+import { beforeEach, expect, test, vi } from 'vitest';
+
 import config from '../src/config-loader';
 import { AutoUpdater } from '../src/autoupdater';
 import { Router } from '../src/router';
 import type { WebhookEvent } from '@octokit/webhooks-types/schema';
 
-jest.mock('../src/config-loader');
-jest.mock('../src/autoupdater');
+vi.mock('../src/config-loader');
+vi.mock('../src/autoupdater');
 
 beforeEach(() => {
-  jest.resetAllMocks();
+  vi.resetAllMocks();
 });
 
 test('invalid event name', async () => {
@@ -19,7 +21,7 @@ test('invalid event name', async () => {
     `Unknown event type '${eventName}', only 'push', 'pull_request', 'workflow_run', and 'schedule' are supported.`,
   );
 
-  const autoUpdateInstance = (AutoUpdater as jest.Mock).mock.instances[0];
+  const autoUpdateInstance = vi.mocked(AutoUpdater).mock.instances[0];
   expect(autoUpdateInstance.handlePush).toHaveBeenCalledTimes(0);
   expect(autoUpdateInstance.handlePullRequest).toHaveBeenCalledTimes(0);
 });
@@ -30,7 +32,7 @@ test('"push" events', async () => {
 
   await router.route('push');
 
-  const autoUpdateInstance = (AutoUpdater as jest.Mock).mock.instances[0];
+  const autoUpdateInstance = vi.mocked(AutoUpdater).mock.instances[0];
   expect(autoUpdateInstance.handlePush).toHaveBeenCalledTimes(1);
 });
 
@@ -40,7 +42,7 @@ test('"pull_request" events', async () => {
 
   await router.route('pull_request');
 
-  const autoUpdateInstance = (AutoUpdater as jest.Mock).mock.instances[0];
+  const autoUpdateInstance = vi.mocked(AutoUpdater).mock.instances[0];
   expect(autoUpdateInstance.handlePullRequest).toHaveBeenCalledTimes(1);
 });
 
@@ -50,7 +52,7 @@ test('"workflow_run" events', async () => {
 
   await router.route('workflow_run');
 
-  const autoUpdateInstance = (AutoUpdater as jest.Mock).mock.instances[0];
+  const autoUpdateInstance = vi.mocked(AutoUpdater).mock.instances[0];
   expect(autoUpdateInstance.handleWorkflowRun).toHaveBeenCalledTimes(1);
 });
 
@@ -60,7 +62,7 @@ test('"workflow_dispatch" events', async () => {
 
   await router.route('workflow_dispatch');
 
-  const autoUpdateInstance = (AutoUpdater as jest.Mock).mock.instances[0];
+  const autoUpdateInstance = vi.mocked(AutoUpdater).mock.instances[0];
   expect(autoUpdateInstance.handleWorkflowDispatch).toHaveBeenCalledTimes(1);
 });
 
@@ -70,6 +72,6 @@ test('"schedule" events', async () => {
 
   await router.route('schedule');
 
-  const autoUpdateInstance = (AutoUpdater as jest.Mock).mock.instances[0];
+  const autoUpdateInstance = vi.mocked(AutoUpdater).mock.instances[0];
   expect(autoUpdateInstance.handleSchedule).toHaveBeenCalledTimes(1);
 });

@@ -5,6 +5,8 @@ if ('GITHUB_TOKEN' in process.env) {
 }
 
 import nock from 'nock';
+import { afterEach, describe, expect, test } from 'vitest';
+
 import { GitHubService } from '../../src/services/GitHubService';
 
 const owner = 'chinthakagodawita';

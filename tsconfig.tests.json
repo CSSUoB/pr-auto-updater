@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node", "jest", "ts-auto-mock"],
+    "types": ["node", "ts-auto-mock"],
     "plugins": [{ "name": "ts-auto-mock" }]
   },
   "include": ["src/**/*", "bin/**/*", "test/**/*"],
