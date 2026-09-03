@@ -7,7 +7,6 @@
   "repository": "https://github.com/CSSUoB/pr-auto-updater",
   "author": "MattyTheHacker <<18513864+MattyTheHacker@users.noreply.github.com>>",
   "license": "MIT",
-  "bin": "bin/cli.js",
   "scripts": {
     "build": "esbuild bin/cli.ts --bundle --platform=node --format=cjs --outfile=dist/index.js",
     "lint": "eslint . && prettier --check .",

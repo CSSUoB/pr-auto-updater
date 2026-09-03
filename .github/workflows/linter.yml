@@ -21,5 +21,9 @@ jobs:
       - name: Lint files
         run: yarn run lint
 
+      - name: Warn about degraded TS linting
+        run: |
+          echo "::warning::@typescript-eslint doesn't support TypeScript 7 yet, so the lint step above only runs Prettier against .ts files, not ESLint. Type check below still runs. Tracking: https://github.com/CSSUoB/pr-auto-updater/issues/116"
+
       - name: Type check
         run: yarn run typecheck
